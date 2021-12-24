@@ -4,34 +4,40 @@ import torch.nn.functional as F
 import dgl
 import dgl.function as fn
 from dgl.nn.pytorch.conv import SAGEConv
-from dgl.nn.pytorch.conv import GraphConv
+# from dgl.nn.pytorch.conv import GraphConv
 
 
-class StochasticTwoLayerGCN(nn.Module):
-    def __init__(self, in_features, hidden_features, out_features):
-        super().__init__()
-        self.conv1 = GraphConv(in_features, hidden_features, allow_zero_in_degree=True)
-        self.conv2 = GraphConv(hidden_features, out_features, allow_zero_in_degree=True)
-
-    def forward(self, blocks, x):
-        x = F.relu(self.conv1(blocks[0], x))
-        x = F.relu(self.conv2(blocks[1], x))
-        return x
+# class StochasticTwoLayerGCN(nn.Module):
+#     def __init__(self, in_features, hidden_features, out_features):
+#         super().__init__()
+#         self.conv1 = GraphConv(in_features, hidden_features, allow_zero_in_degree=True)
+#         self.conv2 = GraphConv(hidden_features, out_features, allow_zero_in_degree=True)
+#
+#     def forward(self, blocks, x):
+#         x = F.relu(self.conv1(blocks[0], x))
+#         x = F.relu(self.conv2(blocks[1], x))
+#         return x
 
 
 class SAGE(nn.Module):
     def __init__(self, in_feats, hid_feats, out_feats):
         super().__init__()
         self.conv1 = SAGEConv(
-            in_feats=in_feats, out_feats=hid_feats, aggregator_type='mean')
+            in_feats=in_feats,
+            out_feats=hid_feats,
+            aggregator_type='mean'
+        )
         self.conv2 = SAGEConv(
-            in_feats=hid_feats, out_feats=out_feats, aggregator_type='mean')
+            in_feats=hid_feats,
+            out_feats=out_feats,
+            aggregator_type='mean'
+        )
 
-    def forward(self, graph, inputs):
+    def forward(self, blocks, inputs):
         # inputs are features of nodes
-        h = self.conv1(graph, inputs)
+        h = self.conv1(blocks[0], inputs)
         h = F.relu(h)
-        h = self.conv2(graph, h)
+        h = self.conv2(blocks[1], h)
         return h
 
 #

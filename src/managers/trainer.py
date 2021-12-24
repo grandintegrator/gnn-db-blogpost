@@ -75,8 +75,8 @@ class Trainer(object):
             [ones(pos_score_edge.shape[0]),
              zeros(neg_score_edge.shape[0])]).detach().numpy()
 
-        results['AUC '] = roc_auc_score(labels, scores)
-        results['AP '] = average_precision_score(labels, scores)
+        results['AUC'] = roc_auc_score(labels, scores)
+        results['AP'] = average_precision_score(labels, scores)
         return results
 
     def train_epoch(self):
@@ -95,6 +95,7 @@ class Trainer(object):
                                                   blocks=blocks,
                                                   x=input_features)
                 loss = self.compute_loss(pos_score, neg_score)
+                results = self.compute_train_auc_ap(self.sigmoid, pos_score, neg_score)
 
                 # <---: Back Prop :)
                 self.opt.zero_grad()
@@ -107,11 +108,9 @@ class Trainer(object):
                     break
 
     def train(self):
-        # wandb login --relogin of you would like to log data into W&B
         self.make_optimiser()
-        for _ in range(1):
-            # Put model into training mode
-            self.model.train()
-            self.train_epoch()
+        # Put model into training mode
+        self.model.train()
+        self.train_epoch()
 
 

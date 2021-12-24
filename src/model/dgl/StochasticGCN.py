@@ -1,7 +1,6 @@
-import dgl.nn as dglnn
-import torch.nn as nn
-from model.dgl.layers import SAGE, StochasticTwoLayerGCN
 import dgl
+import torch.nn as nn
+from model.dgl.layers import SAGE  # StochasticTwoLayerGCN
 
 
 class ScorePredictor(nn.Module):
@@ -15,7 +14,7 @@ class ScorePredictor(nn.Module):
 class Model(nn.Module):
     def __init__(self, in_features, hidden_features, out_features, num_classes):
         super().__init__()
-        self.gcn = StochasticTwoLayerGCN(in_features, hidden_features, out_features)
+        self.gcn = SAGE(in_features, hidden_features, out_features)
         self.pred = ScorePredictor()
 
     def forward(self, positive_graph, negative_graph, blocks, x):

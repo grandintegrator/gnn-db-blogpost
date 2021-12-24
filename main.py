@@ -33,13 +33,14 @@ def main(config) -> None:
     # ------------------------------------------------------------------------------------------------------------------
     loader = DataLoader(params=params, spark=spark)
     data_loaders = loader.get_edge_dataloaders()
-    logging.info(f"Initialised edge data loaders for training, validation, and testing")
+    logging.info("Initialised edge data loaders for training, validation, and testing")
 
     # ------------------------------------------------------------------------------------------------------------------
     # Create a graph model for training
     # ------------------------------------------------------------------------------------------------------------------
     graph_model = create_model(params=params)
 
+    logging.info('Starting training')
     trainer = Trainer(params=params,
                       model=graph_model,
                       train_data_loader=data_loaders['training'])
