@@ -12,6 +12,12 @@
 
 # COMMAND ----------
 
+# MAGIC %md 
+# MAGIC <img align="middle" src="files/ajmal_aziz/gnn-blog/supplier_network.png"  alt="graph-structured-data">
+# MAGIC <figcaption align="center"><b>Fig.1 Arrows between suppliers represent buying and selling relationships. Firms typically see one layer of this network whilst there a web of other suppliers (and some potentially high risk) that are invisible. </b></figcaption>
+
+# COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## 2. Resilient Supply Chains
 # MAGIC The first step to building resilient supply chains is to first have visbility over the supply chain itself. There have been multiple instances where companies have fallen victim to a lack of visibility in their supply chains. This has led to both financial and ESG implications for these firms.
