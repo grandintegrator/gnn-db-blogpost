@@ -1,25 +1,55 @@
 import argparse
 import logging
-import pprint
 import yaml
 from pyspark.sql import SparkSession
 from pyspark.dbutils import DBUtils
 from pathlib import Path
 from warnings import simplefilter
+from dataset.dataloader import DataLoader
+from managers.trainer import Trainer
+# from managers.evaluator import Evaluator
+from utils import create_model
 
 
-def main(run_args) -> None:
+def main(config) -> None:
     """
     Main entry point for the project
     """
     simplefilter(action='ignore', category=UserWarning)
     spark = SparkSession.builder.getOrCreate()
-    spark.sql("""USE ajmal_aziz_gnn_blog""")
-    spark.sql("""select * from country_risk""")
+
+    # Load run configuration settings from config file
+    with open('config/config.yaml', 'r') as config_file:
+        params = yaml.safe_load(config_file)
+
+    # ------------------------------------------------------------------------------------------------------------------
+    # Spark parameters and configuration
+    # ------------------------------------------------------------------------------------------------------------------
+    spark.sql(f"USE {params['database']}")
+    logging.info(f"Using {params['database']}")
+
+    # ------------------------------------------------------------------------------------------------------------------
+    # Create dataset as well as data loaders for training, validation and testing
+    # ------------------------------------------------------------------------------------------------------------------
+    loader = DataLoader(params=params, spark=spark)
+    data_loaders = loader.get_edge_dataloaders()
+    logging.info(f"Initialised edge data loaders for training, validation, and testing")
+
+    # ------------------------------------------------------------------------------------------------------------------
+    # Create a graph model for training
+    # ------------------------------------------------------------------------------------------------------------------
+    graph_model = create_model(params=params)
+
+    trainer = Trainer(params=params,
+                      model=graph_model,
+                      train_data_loader=data_loaders['training'])
+
+    trainer.train()
 
 
 if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO)
+    logging.getLogger("py4j").setLevel(logging.INFO)
 
     parser = argparse.ArgumentParser(description='GNN Blog Post Run Arguments.')
 
