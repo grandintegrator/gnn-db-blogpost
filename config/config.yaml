@@ -11,7 +11,7 @@ num_node_features: 15
 num_hidden_graph_layers: 100
 num_negative_samples: 3
 num_classes: 2
-batch_size: 64 # Mini batch size for the graph
+batch_size: 12 # Mini batch size for the graph
 num_epochs: 8000
 num_workers: 0
 

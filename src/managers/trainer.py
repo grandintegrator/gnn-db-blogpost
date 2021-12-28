@@ -10,6 +10,9 @@ from sklearn.metrics import average_precision_score
 from typing import Dict, Any
 from model.dgl.StochasticGCN import ScorePredictor
 
+import mlflow.pytorch
+# from mlflow.tracking import MlflowClient
+
 
 class Trainer(object):
     def __init__(self, params, model, train_data_loader):
@@ -26,7 +29,8 @@ class Trainer(object):
     def make_optimiser(self):
         # Fixing parameter types because Box doesn't do this naturally.
         self.params['lr'] = float(self.params['lr'])
-        self.params['l2_regularisation'] = float(self.params['l2_regularisation'])
+        self.params['l2_regularisation'] = \
+            float(self.params['l2_regularisation'])
 
         # Could probably turn this into a function if we want to try others
         if self.params['optimiser'] == 'SGD':
@@ -95,22 +99,45 @@ class Trainer(object):
                                                   blocks=blocks,
                                                   x=input_features)
                 loss = self.compute_loss(pos_score, neg_score)
-                results = self.compute_train_auc_ap(self.sigmoid, pos_score, neg_score)
+
+                results = self.compute_train_auc_ap(self.sigmoid,
+                                                    pos_score,
+                                                    neg_score)
 
                 # <---: Back Prop :)
                 self.opt.zero_grad()
                 loss.backward()
                 self.opt.step()
 
+                # Logging
+                mlflow.log_metric("Epoch Loss", float(loss.item()), step=step)
+
+                mlflow.log_metric("Model Training AUC", results['AUC'],
+                                  step=step)
+
                 tq.set_postfix({'loss': '%.03f' % loss.item()}, refresh=False)
+
                 # Break if number of epochs has been satisfied
                 if step == self.params['num_epochs']:
                     break
 
     def train(self):
+        client = mlflow.tracking.MlflowClient()
         self.make_optimiser()
+
         # Put model into training mode
         self.model.train()
-        self.train_epoch()
+
+        with mlflow.start_run(run_name='GNN-BLOG-MODEL'):
+            self.train_epoch()
+            mlflow.log_params(self.params)
+
+            mlflow.pytorch.log_model(self.model, "model")
+            run_id = mlflow.active_run().info.run_id
+            result = mlflow.register_model(
+                'runs:/{}/model'.format(run_id),
+                'GNN-BLOG-MODEL'
+            )
+
 
 
