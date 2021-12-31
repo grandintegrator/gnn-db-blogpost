@@ -1,21 +1,21 @@
 database: 'ajmal_aziz_gnn_blog'
 device: 'cpu'
 
-# Modelling
+
 test_p: 0.10
 valid_p: 0.20
 optimiser: 'Adam'
 loss: 'binary_cross_entropy'
-stream_wandb: 'False'
 num_node_features: 15
-num_hidden_graph_layers: 100
+num_hidden_graph_layers: 20
 num_negative_samples: 3
 num_classes: 2
 batch_size: 12 # Mini batch size for the graph
-num_epochs: 8000
+num_epochs: 200
 num_workers: 0
 
 # Graph Neural Network training parameters (not mutually exclusive with above)
 lr: 0.001
 l2_regularisation: 0.0005 # Regularisation term for the GNN weights
 momentum:  0.05
+aggregator_type: 'mean'

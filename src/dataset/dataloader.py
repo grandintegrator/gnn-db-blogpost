@@ -1,7 +1,7 @@
 import numpy as np
 import dgl
 import torch
-from typing import Dict, Any
+from typing import Dict
 
 
 class DataLoader(object):
@@ -26,7 +26,7 @@ class DataLoader(object):
             np.array([x.dst_id for x in self.company_table.select('dst_id').collect()])
         return dgl.graph((source_company_id, destination_company_id))
 
-    def make_graph_partitions(self) -> Dict[str, Any]:
+    def make_graph_partitions(self) -> Dict[str, dgl.DGLGraph]:
         """
         Function creates graph partitions consisting of:
          1. training graph: initial tuning of parameters
@@ -59,16 +59,19 @@ class DataLoader(object):
                 'validation': self.validation_graph,
                 'testing': self.testing_graph}
 
-    def get_edge_dataloaders(self) -> Dict[str, dgl.dataloading.EdgeDataLoader]:
+    def get_edge_dataloaders(self) -> (Dict[str, dgl.dataloading.EdgeDataLoader],
+                                       Dict[str, dgl.DGLGraph],
+                                       dgl.DGLGraph):
         """
         Returns an edge loader for link prediction with sampling function
-         and negative sampling function.
+         and negative sampling function as well as the graph partitions
         """
         graph_partitions = self.make_graph_partitions()
 
         data_loaders = {}
 
-        # TODO: Have the neighbourhood and negative sampler as a parameter that gets set
+        # TODO: Have the neighbourhood and negative sampler as a parameter that
+        # get set during the tuning process
         # sampler = dgl.dataloading.MultiLayerFullNeighborSampler(2)
         sampler = dgl.dataloading.MultiLayerNeighborSampler([4, 4])
         negative_sampler = dgl.dataloading.negative_sampler.Uniform(10)
@@ -94,7 +97,7 @@ class DataLoader(object):
                 pin_memory=True,
                 num_workers=self.params['num_workers'])
 
-        return data_loaders
+        return data_loaders, graph_partitions, self.graph
 
 
 

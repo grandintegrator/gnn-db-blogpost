@@ -1,23 +1,29 @@
+import dgl
 import tqdm
 import torch
+import logging
 import torch.optim as optim
 import torch.nn.functional as F
-
-from torch import cat, ones, zeros
 from torch.nn import Sigmoid
-from sklearn.metrics import roc_auc_score
-from sklearn.metrics import average_precision_score
+from torch import cat, ones, zeros
 from typing import Dict, Any
 from model.dgl.StochasticGCN import ScorePredictor
-
+from utils import plot_tsne_embeddings, compute_auc_ap
+import mlflow
 import mlflow.pytorch
-# from mlflow.tracking import MlflowClient
+from mlflow.tracking import MlflowClient
 
 
 class Trainer(object):
-    def __init__(self, params, model, train_data_loader):
+    def __init__(self,
+                 params: Dict[str, Any],
+                 model: torch.nn.Module,
+                 train_data_loader: dgl.dataloading.EdgeDataLoader,
+                 validation_data_loader: dgl.dataloading.EdgeDataLoader,
+                 training_graph: dgl.DGLGraph):
         self.params = params
         self.model = model
+        self.training_graph = training_graph
         self.train_data_loader = train_data_loader
         self.predictor = ScorePredictor().to(self.params['device'])
         self.opt = None
@@ -65,25 +71,7 @@ class Trainer(object):
                 F.binary_cross_entropy_with_logits(scores, labels)
             return binary_cross_entropy
 
-    @staticmethod
-    def compute_train_auc_ap(sigmoid,
-                             pos_score,
-                             neg_score) -> Dict[str, Any]:
-        # Compute the AUC per type
-        results = {}
-        pos_score_edge = sigmoid(pos_score)
-        neg_score_edge = sigmoid(neg_score)
-
-        scores = cat([pos_score_edge, neg_score_edge]).detach().numpy()
-        labels = cat(
-            [ones(pos_score_edge.shape[0]),
-             zeros(neg_score_edge.shape[0])]).detach().numpy()
-
-        results['AUC'] = roc_auc_score(labels, scores)
-        results['AP'] = average_precision_score(labels, scores)
-        return results
-
-    def train_epoch(self):
+    def train_epochs(self):
         with tqdm.tqdm(self.train_data_loader) as tq:
             for step, (input_nodes, positive_graph, negative_graph,
                        blocks) in enumerate(tq):
@@ -100,21 +88,17 @@ class Trainer(object):
                                                   x=input_features)
                 loss = self.compute_loss(pos_score, neg_score)
 
-                results = self.compute_train_auc_ap(self.sigmoid,
-                                                    pos_score,
-                                                    neg_score)
-
                 # <---: Back Prop :)
                 self.opt.zero_grad()
                 loss.backward()
                 self.opt.step()
 
                 # Logging
+                results = compute_auc_ap(pos_score, neg_score)
+
                 mlflow.log_metric("Epoch Loss", float(loss.item()), step=step)
-
-                mlflow.log_metric("Model Training AUC", results['AUC'],
-                                  step=step)
-
+                mlflow.log_metric("Model Training AUC",
+                                  results['AUC'], step=step)
                 tq.set_postfix({'loss': '%.03f' % loss.item()}, refresh=False)
 
                 # Break if number of epochs has been satisfied
@@ -122,22 +106,12 @@ class Trainer(object):
                     break
 
     def train(self):
-        client = mlflow.tracking.MlflowClient()
+        """ Function performs training of the GNN
+        and returns the run ID so that the validation and testing set
+        accuracy can be recorded against the same run.
+        """
         self.make_optimiser()
-
-        # Put model into training mode
         self.model.train()
-
-        with mlflow.start_run(run_name='GNN-BLOG-MODEL'):
-            self.train_epoch()
-            mlflow.log_params(self.params)
-
-            mlflow.pytorch.log_model(self.model, "model")
-            run_id = mlflow.active_run().info.run_id
-            result = mlflow.register_model(
-                'runs:/{}/model'.format(run_id),
-                'GNN-BLOG-MODEL'
-            )
-
-
+        self.train_epochs()
+        return self.model
 
