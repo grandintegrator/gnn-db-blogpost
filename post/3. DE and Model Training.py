@@ -6,7 +6,7 @@
 
 # MAGIC %md-sandbox ## 3.1 Data Engineering
 # MAGIC <div style="float:right">
-# MAGIC   <img src="files/ajmal_aziz/gnn-blog/data_engineering.png" alt="graph-training" width="840px", />
+# MAGIC   <img src="files/ajmal_aziz/gnn-blog/step_1-2.png" alt="graph-training" width="840px", />
 # MAGIC </div>
 # MAGIC 
 # MAGIC We begin by ingesting our streaming data using Autoloader and saving as a delta table. Additionally we read in CSV files from our internal teams and convert them to delta tables for more efficient querying.
@@ -41,7 +41,7 @@ bronze_relation_data.writeStream\
 
 # COMMAND ----------
 
-# DBTITLE 1,1. We note that the data set includes low likelihood pairs and should be cut
+# DBTITLE 1,1. We note that the data set includes low likelihood pairs should not be used during training
 bronze_company_data = spark.read.table("bronze_relation_data")
 draw_probability_distribution(bronze_company_data, probability_col='probability')
 
@@ -91,14 +91,14 @@ silver_relation_data = spark.readStream\
 silver_relation_table = spark.read.format('delta').table('silver_relation_data')
 
 def make_dgl_graph(relation_table) -> dgl.DGLGraph:
-        """
-        Make a Graph object within DGL using src_id and dst_id from table encoding graph
-        Nodes: Companies with unique src_id or dst_id
-        Edges: Company A (with src_id) --> buys_from --> Company B (sith dst_id)
-        """
-        source_company_id = np.array([x.src_id for x in relation_table.select('src_id').collect()])
-        destination_company_id = np.array([x.dst_id for x in relation_table.select('dst_id').collect()])
-        return dgl.graph((source_company_id, destination_company_id))
+    """
+    Make a Graph object within DGL using src_id and dst_id from table encoding graph
+    Nodes: Companies with unique src_id or dst_id
+    Edges: Company A (with src_id) --> buys_from --> Company B (with dst_id)
+    """
+    source_company_id = np.array([x.src_id for x in relation_table.select('src_id').collect()])
+    destination_company_id = np.array([x.dst_id for x in relation_table.select('dst_id').collect()])
+    return dgl.graph((source_company_id, destination_company_id))
 
 supplier_graph = make_dgl_graph(relation_table=silver_relation_table)
 
@@ -380,8 +380,11 @@ class Model(nn.Module):
         pos_score = self.pred(positive_graph, x)
         neg_score = self.pred(negative_graph, x)
         return pos_score, neg_score
-
-    def get_embeddings(self, g, x, batch_size, device):
+    
+    def get_embeddings(self, g, x, batch_size, device, provide_prediction=False):
+      if provide_prediction:
+        return self.pred(g, x)
+      else:
         return self.gcn.inference(g, x, batch_size, device)
 
 # COMMAND ----------
@@ -399,14 +402,14 @@ graph_model
 
 # MAGIC %md-sandbox
 # MAGIC ## 3.2.2 Training the Graph Neural Network
+# MAGIC The defined architecture's forward passes have been defined but the weights of the layers need to be trained. We define a training and validation scheme below to optimise the network weights but also use HyperOpt to search the wider design space. This includes searching the space parameters like the number of negative samples per positive sample, and the dimensionality of the number of node features for the GNN to name a few.
 
 # COMMAND ----------
 
-# DBTITLE 1,We define a trainer class to orchestrate our GNN training
+# DBTITLE 1,We define a trainer class for training the Model defined above
 class Trainer(object):
     def __init__(self, params: Dict[str, Any], model: torch.nn.Module,
                  train_data_loader: dgl.dataloading.EdgeDataLoader,
-                 validation_data_loader: dgl.dataloading.EdgeDataLoader,
                  training_graph: dgl.DGLGraph):
         self.params = params
         self.model = model
@@ -478,51 +481,35 @@ class Trainer(object):
                 if step == self.params['num_epochs']:
                     break
 
-        return {'model': self.model,
-                'final_auc': results['AUC'],
-                'loss': loss.item()}
+        return {'model': self.model, 'final_training_auc': results['AUC'], 'loss': loss.item()}
 
 # COMMAND ----------
 
-# DBTITLE 1,Define a custom MLFlow model for our GNN (this could be moved elsewhere)
-class GNNModelWrapper(mlflow.pyfunc.PythonModel):
-    def __init__(self, model, params):
-        self.model = model
-        self.params = params
-    
-    def predict(self, context, model_input):
-      """
-      Assuming model input is a dataframe containing src_id, dst_id
-      """
-      graph = make_dgl_graph(model_input)
+# DBTITLE 1,Define an evaluator which samples subgraphs in the validation graph
+def evaluate(trained_model: torch.nn.Module,
+             validation_data_loader: dgl.dataloading.EdgeDataLoader) -> (List, List):
+  trained_model.eval()
+  roc_auc_sugraphs = []
+  ap_sugraphs = []
+  for input_nodes, positive_graph, negative_graph, blocks in validation_data_loader:
+    with torch.no_grad():
+        input_features = blocks[0].srcdata['feature']
+        
+        # 🔜 Forward pass through the network.
+        pos_score, neg_score = \
+            trained_model(positive_graph=positive_graph,
+                          negative_graph=negative_graph,
+                          blocks=blocks,
+                          x=input_features)
+        auc_pr_dicts = compute_auc_ap(pos_score, neg_score)
+        roc_auc_sugraphs.append(auc_pr_dicts['AUC'])
+        ap_sugraphs.append(auc_pr_dicts['AP'])
+  return roc_auc_sugraphs, ap_sugraphs
 
-      # Assign node features to the new graph of size [1 x num_node_features]
-      graph.ndata['feature'] = torch.randn(graph_partitions[split].num_nodes(),
-                                           params['num_node_features'])
-      
-      # Draws params['num_negative_samples'] samples of non-existent edges from the uniform distribution
-      negative_sampler = dgl.dataloading.negative_sampler.Uniform(params['num_negative_samples'])
-      sampler = dgl.dataloading.MultiLayerNeighborSampler([4, 4])
-      
-      # Create the data loader based on the sampler and negative sampler
-      data_loader = dgl.dataloading.EdgeDataLoader(
-          graph, graph.edges(form='eid'), sampler, device=params['device'],
-          negative_sampler=negative_sampler, batch_size=params['batch_size'],
-          shuffle=True, drop_last=False, pin_memory=True, num_workers=params['num_workers'])
-      
-      with torch.no_grad():
-        result = []
-        for input_nodes, positive_graph, negative_graph, blocks in data_loader:
-          with torch.no_grad():
-            input_features = blocks[0].srcdata['feature']
-            # 🔜 Forward pass through the network.
-            pos_score, neg_score = self.model(positive_graph=positive_graph,
-                                   negative_graph=negative_graph,
-                                   blocks=blocks,
-                                   x=input_features)
-          result.append(pos_score)
-      return torch.cat([result])
+# COMMAND ----------
 
+# MAGIC %md-sandbox
+# MAGIC ## 3.2.3 Searching the design space using HyperOpt
 
 # COMMAND ----------
 
@@ -532,12 +519,12 @@ params_hyperopt = {'optimiser': hp.choice('optimiser', ["Adam", "SGD"]),
                    'num_node_features': hp.choice('num_node_features', [2, 10, 20, 50, 100]),
                    'num_hidden_graph_layers': hp.choice('num_hidden_graph_layers', [5, 15, 100]),
                    'batch_size': hp.choice('batch_size', [16, 32, 64, 128]),
-                   'num_negative_samples': [10, 50, 100, 400],
+                   'num_negative_samples': hp.choice('num_negative_samples', [10, 50, 100, 400]),
                    'num_epochs': hp.choice('num_epochs', [1000, 2000, 8000]),
                    'l2_regularisation': hp.choice('l2_regularisation', [5e-4, 5e-3, 5e-2]),
                    'momentum': hp.choice('momentum', [5e-4, 5e-3, 5e-2]),
                    'lr': hp.choice('lr', [1e-3, 1e-5, 1e-2]),
-                   'aggregator_type': hp.choice('aggregator_type', ['mean', 'sum'])}
+                   'aggregator_type': hp.choice('aggregator_type', ['mean', 'pool'])}
 static_params = {'device': 'cpu',
                  'test_p': 0.1,
                  'valid_p': 0.2,
@@ -548,50 +535,175 @@ params_hyperopt = {**params_hyperopt, **static_params}
 # COMMAND ----------
 
 # DBTITLE 1,We will use HyperOpt to search the GNN and graph-sampling parameter space
+# Let's create a static training, validation, and testing set of graphs
 graph_partitions = make_graph_partitions(graph=supplier_graph, params=params)
-data_loaders = get_edge_dataloaders(graph_partitions=graph_partitions, params=params)
 
-def train_gnn(params_hyperopt):
-    trainer = Trainer(params=params_hyperopt,
-                      model=graph_model,
-                      train_data_loader=data_loaders['training'],
-                      validation_data_loader=data_loaders['validation'],
-                      training_graph=graph_partitions['training'])
-    training_results = trainer.train_epochs()
-    return {'loss': -1*training_results['final_auc'], 'status': STATUS_OK,
-            'model': training_results['model'], 'param_hyperopt': params_hyperopt}
+def train_and_evaluate_gnn(params_hyperopt):
+  assert type(params_hyperopt['num_negative_samples']) == int
+  # New set of data loaders given the parameter set
+  graph_model = Model(in_features=params_hyperopt['num_node_features'],
+                    hidden_features=params_hyperopt['num_hidden_graph_layers'],
+                    out_features=params_hyperopt['num_node_features'],
+                    num_classes=params_hyperopt['num_classes'],
+                    aggregator_type=params_hyperopt['aggregator_type'])
 
-def run_gnn_hyperopt(trials=Trials()):
-  with mlflow.start_run(run_name="GNN-SUPPLY-CHAIN", nested=True):
-    # Log the parameters of the model run
-    mlflow.set_tag("link-prediction", "GraphSAGE")
-    argmin = fmin(train_gnn, params_hyperopt, algo=tpe.suggest, max_evals=100, trials=trials)
-    mlflow.log_params(argmin)
+  data_loaders = get_edge_dataloaders(graph_partitions=graph_partitions,
+                                      params=params_hyperopt)
 
-    loss = trials.best_trial['result']['loss']
-    mlflow.log_metric("final_auc", loss)
-    
-    # Log our custom GNN model
-    #     mlflow.pytorch.log_model("model", python_model=GNNModelWrapper(trials.best_trial['result']['model']))
-    
-    # We also log the t-SNE of the node embeddings
-    #     model = trials.best_trial['result']['model']
-    #     with torch.no_grad():
-    #         training_graph = graph_partitions['training']
-    #         training_graph_embeddings = (
-    #             trained_model.get_embeddings(g=training_graph,
-    #                                          x=training_graph.ndata['feature'],
-    #                                          batch_size=params['batch_size'],
-    #                                          device=params['device'])
-    #         )
-    #     t_sne_plot = plot_tsne_embeddings(graph_embeddings=training_graph_embeddings,
-    #                                       chart_name='training_embeddings',
-    #                                       save_fig=True)
-    #     mlflow.log_figure(t_sne_plot, 'training_embeddings.png')
+  trainer = Trainer(params=params_hyperopt,
+                    model=graph_model,
+                    train_data_loader=data_loaders['training'],
+                    training_graph=graph_partitions['training'])
+  training_results = trainer.train_epochs()
+
+  # The trained model based on the hyperparams is now fed into the validation
+  roc_auc_sugraphs, _ = evaluate(trained_model=training_results['model'], 
+                                 validation_data_loader=data_loaders['validation'])
+
+  # We want to optimise for the highest auc accross the validation subgraphs
+  loss = -1*sum(roc_auc_sugraphs)/len(roc_auc_sugraphs)
+
+  return {'loss': loss, 'status': STATUS_OK,
+          'param_hyperopt': params_hyperopt}
 
 # COMMAND ----------
 
-run_gnn_hyperopt(trials = SparkTrials())
+argmin = fmin(fn=train_and_evaluate_gnn,
+            space=params_hyperopt,
+            algo=tpe.suggest,
+            max_evals=10,
+            trials=SparkTrials(parallelism=4))
+
+# COMMAND ----------
+
+# best_parameters = hyperopt.space_eval(params_hyperopt, argmin)
+best_parameters = {'aggregator_type': 'pool',
+ 'batch_size': 32,
+ 'device': 'cpu',
+ 'l2_regularisation': 0.005,
+ 'loss': 'margin',
+ 'lr': 0.01,
+ 'momentum': 0.005,
+ 'num_classes': 2,
+ 'num_epochs': 2000,
+ 'num_hidden_graph_layers': 100,
+ 'num_negative_samples': 50,
+ 'num_node_features': 50,
+ 'num_workers': 0,
+ 'optimiser': 'SGD',
+ 'test_p': 0.1,
+ 'valid_p': 0.2}
+
+# COMMAND ----------
+
+# MAGIC %md-sandbox
+# MAGIC <div style="float:right">
+# MAGIC   <img src="files/ajmal_aziz/gnn-blog/logged_model.gif" alt="graph-training" width="700px", />
+# MAGIC </div>
+# MAGIC 
+# MAGIC ### 3.3.3 Logging the GNN model into the model registry using mlflow
+# MAGIC We will now take the parameters that were found with HyperOpt and create an mlflow run that will log a ```pyfunc``` flavour of our model along with a t-SNE plot of the learned embeddings. This can be viewed within the Experiments tab of Databricks. We notice that the embeddings form two large clusters. This shows **good learned embeddings!** since nodes that are connected should be clustered together and nodes that are not should be seperated. The decision boundary for the neural network will be simpler, can you see where the decision boundary would be? 
+# MAGIC 
+# MAGIC This gives us confidence to move this model to production and classify the low confidence links based on the GNN.
+
+# COMMAND ----------
+
+# DBTITLE 1,Define a custom mlflow model for our GNN as a pyfunc flavour
+class GNNWrapper(mlflow.pyfunc.PythonModel):
+  def __init__(self, model, params):
+    self.model = model
+    self.params = params
+  def predict(self, context, model_input):
+    # Create a graph structure with the model_input
+    if isinstance(model_input, pd.DataFrame):
+      source_company_id = np.array([x for x in model_input['src_id'].values])
+      destination_company_id = np.array([x for x in model_input['dst_id'].values])
+      g = dgl.graph((source_company_id, destination_company_id))
+    else: 
+      g = make_dgl_graph(model_input)
+    
+    # Assign node features to the new graph of size [1 x num_node_features]
+    g.ndata['feature'] = torch.randn(g.num_nodes(),
+                                     self.params['num_node_features'])
+    with torch.no_grad():
+      predictions = \
+              self.model.get_embeddings(g=g,x=g.ndata['feature'],
+                                        batch_size=self.params['batch_size'], device='cpu',
+                                        provide_prediction=True)
+    return predictions.detach().numpy().squeeze()
+
+# COMMAND ----------
+
+# DBTITLE 1,We create a seperate mlflow run with the best parameters, log the model, and the t-SNE of the learned embeddings
+with mlflow.start_run(run_name="GNN-SUPPLY-CHAIN") as run:
+  # Log the parameters of the model run
+  mlflow.set_tag("link-prediction", "GraphSAGE")
+  mlflow.log_params(best_parameters)
+  run_id = run.info.run_id
+  
+  graph_model = Model(in_features=best_parameters['num_node_features'],
+                  hidden_features=best_parameters['num_hidden_graph_layers'],
+                  out_features=best_parameters['num_node_features'],
+                  num_classes=best_parameters['num_classes'],
+                  aggregator_type=best_parameters['aggregator_type'])
+
+  data_loaders = get_edge_dataloaders(graph_partitions=graph_partitions,
+                                      params=best_parameters)
+  
+  # ----------------------------------------------------------------------------
+  # Collect results for training, validation, and testing
+  # ----------------------------------------------------------------------------
+  trainer = Trainer(params=best_parameters,
+                    model=graph_model,
+                    train_data_loader=data_loaders['training'],
+                    training_graph=graph_partitions['training'])
+  training_results = trainer.train_epochs()
+  
+  eval_aucs, eval_aps = evaluate(trained_model=training_results['model'],
+                                 validation_data_loader=data_loaders['validation'])
+  
+  mlflow.log_metric("Validation AUC - mean", sum(eval_aucs)/len(eval_aucs))
+  mlflow.log_metric("Validation AP - mean", sum(eval_aps)/len(eval_aps))
+  
+  test_aucs, test_aps = evaluate(trained_model=training_results['model'],
+                                validation_data_loader=data_loaders['testing'])
+   
+  mlflow.log_metric("Testing AUC - mean", sum(test_aucs)/len(test_aucs))
+  mlflow.log_metric("Testing AP - mean", sum(test_aps)/len(test_aps))
+
+  # ----------------------------------------------------------------------------
+  # Log the final trained model
+  # ----------------------------------------------------------------------------
+  gnn_model_pyfunc = GNNWrapper(training_results['model'], params=best_parameters)
+  signature = infer_signature(silver_relation_table, 
+                              gnn_model_pyfunc.predict(None, model_input=silver_relation_table))
+  mlflow.pyfunc.log_model(artifact_path="gnn_model", signature=signature,
+                          python_model=gnn_model_pyfunc)
+  
+  # ----------------------------------------------------------------------------
+  # We also log the t-SNE of the learned node embeddings, a key criteria!
+  # ----------------------------------------------------------------------------
+  with torch.no_grad():
+    trained_model = training_results['model']
+    training_graph = graph_partitions['training']
+    training_graph_embeddings = (
+        trained_model.get_embeddings(g=training_graph,
+                                     x=training_graph.ndata['feature'],
+                                     batch_size=params['batch_size'],
+                                     device=params['device'])
+    )
+    t_sne_fig = plot_tsne_embeddings(graph_embeddings=training_graph_embeddings)
+    mlflow.log_figure(t_sne_fig, 'visualisations/tsne_plot.html')
+
+# COMMAND ----------
+
+# MAGIC %md-sandbox
+# MAGIC ### 3.3.3 Finally, we register our model in the model registry
+# MAGIC This model will then be used for inference to refine our silver table. See [next notebook!](https://e2-demo-field-eng.cloud.databricks.com/?o=1444828305810485#notebook/2045410163884197)
+
+# COMMAND ----------
+
+mlflow.register_model('runs:/' + run_id + '/gnn_model', 'supply_gnn_model_ajmal_aziz')
 
 # COMMAND ----------
 

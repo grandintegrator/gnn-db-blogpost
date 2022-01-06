@@ -107,29 +107,31 @@ def compute_auc_ap(pos_score, neg_score) -> Dict[str, Any]:
   return results
 
 
-def plot_tsne_embeddings(graph_embeddings: torch.Tensor,
-                         chart_name: str,
-                         save_fig: bool):
+def plot_tsne_embeddings(graph_embeddings: torch.Tensor):
     """
     Plots t_sne_embeddings
     """
+    import plotly.express as px
+    import plotly.io as pio
+    import pandas as pd
+    pio.templates.default = "plotly_white"
+
     # Due to the large size, only plot about ~30% of the embeddings
     indices = np.random.choice(range(graph_embeddings.shape[0]),
-                               round(graph_embeddings.shape[0]*0.3),
+                               round(graph_embeddings.shape[0]*0.001),
                                replace=False)
     t_sne_embeddings = (
         TSNE(n_components=2, perplexity=30, method='barnes_hut')
             .fit_transform(graph_embeddings[indices, :])
     )
-    fig = plt.figure(figsize=(12, 8))
-    plt.scatter(t_sne_embeddings[:, 0],
-                t_sne_embeddings[:, 1],
-                color='blue',
-                linewidths=0.2)
-    plt.xlabel('Dimension 1')
-    plt.ylabel('Dimension 2')
-    plt.title(f't-SNE Results for {chart_name}')
-    if save_fig:
-        plt.savefig(f'{chart_name}.png', bbox_inches='tight')
-    plt.show()
-    return plt.gcf()
+
+    data = pd.DataFrame({'Dimension 1': t_sne_embeddings[:, 0],
+                         'Dimension 2': t_sne_embeddings[:, 1]})
+
+    fig = px.scatter(data, x='Dimension 1', y='Dimension 2')
+    fig.update_layout(font_family='Arial',
+                      title=f't-SNE',
+                      yaxis_title=r"Dimension 1",
+                      xaxis_title=r"Dimension 2",
+                      font=dict(size=24))
+    return fig
