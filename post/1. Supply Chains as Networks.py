@@ -1,6 +1,6 @@
 # Databricks notebook source
 # MAGIC %md
-# MAGIC # Supply Chain Crisis? Monitoring Supply Chains in real-time with Databricks and Graph Neural Networks
+# MAGIC # Deploying Graph Neural Networks for Monitoring Supply Chains in real-time with Databricks
 
 # COMMAND ----------
 
@@ -25,12 +25,11 @@
 
 # MAGIC %md-sandbox
 # MAGIC ## 2. Building Resilient Supply Chains
-# MAGIC The first step to building resilient supply chains is to first have visbility over the supply chain itself. There have been multiple instances where companies have fallen victim to a lack of visibility in their supply chains. Examples include suppliers of suppliers that do not comply with the Modern Slavery Act or are involved in known nefarious activities. Furthermore, there could be production risk associated to suppliers of suppliers from untrustworthy business practices or even hidden geographic risk exposure that. These shocks have led to both financial and reputational implications for firms that have fallen victim to this lack of transparency. 
+# MAGIC The first step to building resilient supply chains is to have visibility over the supply chain itself. There have been multiple instances where companies have fallen victim to a lack of visibility in their supply chains. Examples include suppliers of suppliers that do not comply with the Modern Slavery Act or are involved in known nefarious activities. Furthermore, there could be production risk associated with suppliers of suppliers from untrustworthy business practices or even hidden geographic risk exposure. These shocks have led to both financial and reputational implications for firms that have fallen victim to this lack of transparency. 
 # MAGIC 
-# MAGIC For this post we're going assume that a company has set up the pre-requisite architectre to obtain potential buying and selling relationships between firms with some probability score. This data will be streamed to a cloud storage and will be streamed using ```autoloader```. We then also incoporate data from our supply and finance teams that have structured information about country risk profiles as well as company risk scores. These will be ingested as CSV files since finance teams typically work with these file types. We will perform data engineering using a medallion architecture.
+# MAGIC For this post, we're going to assume that a company has set up the pre-requisite architecture to obtain potential buying and selling relationships between firms with some probability score. This data will be streamed to cloud storage and will be incrementally ingested ([```autoloader```](https://docs.databricks.com/spark/latest/structured-streaming/auto-loader.html)). We then also incorporate static data from our supply and finance teams that have structured information about country risk profiles as well as company risk scores to feed our executive level dashboard.
 # MAGIC 
 # MAGIC <br>
-# MAGIC 
 # MAGIC <div style="text-align:center">
 # MAGIC   <img src="files/ajmal_aziz/gnn-blog/architecture_including_ml-2.png" width=1500px alt="graph-structured-data">
 # MAGIC </div>
@@ -42,7 +41,7 @@
 # COMMAND ----------
 
 # MAGIC 
-# MAGIC %md ### Let's print out the tables that we are going to be using throughout this blog. We will use these tables to generate our dashboard to view our supply chain health. The only table used during training of the GNN will be the streamed JSON data.
+# MAGIC %md Let's print out the tables that we are going to be using throughout this blog. We will use these tables to generate our dashboard to view our supply chain health. The only table used during training of the GNN will be the streamed JSON data (once you are satisfied, proceeed to the theory notebook or straight to implementation!)
 
 # COMMAND ----------
 

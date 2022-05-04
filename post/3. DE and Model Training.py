@@ -17,21 +17,31 @@
 
 # COMMAND ----------
 
+# DBTITLE 1,We leverage the dgl for graph machine learning
+!pip install dgl
+
+# COMMAND ----------
+
 # DBTITLE 1,Defining as streaming source (our streaming landing zone) and destination, a delta table called bronze_company_data
 data_location = "dbfs:/FileStore/ajmal_aziz/gnn-blog/data/"
 
 bronze_relation_data = spark.readStream\
                          .format("cloudFiles")\
                          .option("cloudFiles.format", "json")\
-                         .option("cloudFiles.maxFilesPerTrigger", 1)\
-                         .option("cloudFiles.schemaLocation", data_location+"bronze_schema_location")\
+                         .option("cloudFiles.schemaLocation", data_location+"_bronze_schema_location")\
                          .option("cloudFiles.inferColumnTypes", "true")\
                          .load(data_location+"stream_landing_location")
 
 bronze_relation_data.writeStream\
-                   .option("checkpointLocation", data_location+"checkpoint_bronze_stream_location") \
-                   .trigger(processingTime='1 seconds') \
-                   .table("bronze_relation_data")
+                    .format("delta")\
+                    .option("mergeSchema", "true")\
+                    .option("checkpointLocation", data_location+"_checkpoint_bronze_stream_dir")\
+                    .table("bronze_relation_data")
+
+# COMMAND ----------
+
+bronze_company_data = spark.read.table("bronze_relation_data")
+display(bronze_company_data)
 
 # COMMAND ----------
 
@@ -42,7 +52,6 @@ bronze_relation_data.writeStream\
 # COMMAND ----------
 
 # DBTITLE 1,1. We note that the data set includes low likelihood pairs should not be used during training
-bronze_company_data = spark.read.table("bronze_relation_data")
 draw_probability_distribution(bronze_company_data, probability_col='probability')
 
 # COMMAND ----------
@@ -60,6 +69,7 @@ import pyspark.sql.functions as F
 clean_company_name = udf(lambda x: cleanco.basename(x), StringType())
 
 silver_relation_data = spark.readStream\
+                      .format("cloudFiles")\
                       .option("cloudFiles.inferColumnTypes", "true")\
                       .table("bronze_relation_data")\
                       .filter(F.col("probability") >= 0.55)\
@@ -68,7 +78,7 @@ silver_relation_data = spark.readStream\
 
 (silver_relation_data.writeStream\
  .format('delta')\
- .option("checkpointLocation", data_location+"/checkpoint_silver_relations")\
+ .option("checkpointLocation", data_location+"_checkpoint_silver_relations")\
  .option('mergeSchema', 'true')\
  .trigger(processingTime="1 seconds")\
  .table('silver_relation_data'))
@@ -148,7 +158,7 @@ def get_edge_dataloaders(graph_partitions: Dict[str, dgl.DGLGraph],
                                                      dgl.DGLGraph):
     """
     Returns an edge loader for link prediction for each partition of the graph (training, validation, testing)
-    with sampling functionand negative sampling function as well as the graph partitions
+    with sampling function and negative sampling function as well as the graph partitions.
     """
     data_loaders = {}
     sampler = dgl.dataloading.MultiLayerNeighborSampler([4, 4])
@@ -281,7 +291,7 @@ class DataLoader(object):
 # MAGIC </div>
 # MAGIC 
 # MAGIC ### 3.2.1 Defining the Graph Neural Network model
-# MAGIC Our GNN model will consist of two GraphSAGE layers to generate node embeddings and will be trained using the edge data loaders we have defined above. The embeddings are then fed into a seperate (simple) neural network that will take as inputs the embeddings for source and destination nodes and provide a prediction for the likelihood of a link (binary classification). More formally, the neural network acts as \\( f: (\mathbf{h}_u, \mathbf{h}_v )\rightarrow z{_u}{_v} \\). All of the network weights are trained using a single loss function, either a binary cross entropy loss or a margin loss. During training and validation we collect pseudo-accuracy metrics like the loss and the ROC-AUC and use mlflow to track the metrics during training. Additionally, we use HyperOpt to perform Bayesian Optimisation for selecting the optimal set of parameters.
+# MAGIC Our GNN model will consist of two GraphSAGE layers to generate node embeddings and will be trained using the edge data loaders we have defined above. The embeddings are then fed into a seperate (simple) neural network that will take as inputs the embeddings for source and destination nodes and provide a prediction for the likelihood of a link (binary classification). More formally, the neural network acts as \\( f: (\mathbf{h}_u, \mathbf{h}_v )\rightarrow z{_u}{_v} \\). All of the network weights are trained using a single loss function, either a binary cross entropy loss or a margin loss. During training and validation we collect pseudo-accuracy metrics like the loss and the ROC-AUC and use mlflow to track the metrics during training.
 
 # COMMAND ----------
 
@@ -289,13 +299,13 @@ class DataLoader(object):
 class MLPPredictor(nn.Module):
     def __init__(self, in_features):
         super().__init__()
-        #                      source and destination nodes
+        #                      source and destination nodes (each will have their own features)
         #          num_node_features     |
         #                    |           |
         self.W = nn.Linear(in_features * 2, 1)
         #                                   |
         #                                   |
-        #                                  binary classification
+        #                                  binary classification!
     def apply_edges(self, edges):
         h_u = edges.src['h']
         h_v = edges.dst['h']
@@ -419,7 +429,7 @@ class Trainer(object):
         self.sigmoid = nn.Sigmoid()
 
     def make_optimiser(self):
-        # Experiment with 2 seperate optimisers
+        # Experiment with 2 seperate optimisers (set by the params)
         if self.params['optimiser'] == 'SGD':
             self.opt = optim.SGD(self.model.parameters(), lr=self.params['lr'],
                                  momentum=self.params['momentum'],
@@ -430,9 +440,6 @@ class Trainer(object):
                                   weight_decay=self.params['l2_regularisation'])
 
     def compute_loss(self, pos_score, neg_score):
-        # For computing the pos and negative score just for the inference edge
-        pos_score_edge = self.sigmoid(pos_score)
-        neg_score_edge = self.sigmoid(neg_score)
         n = pos_score_edge.shape[0]
         if self.params['loss'] == 'margin':
             margin_loss = \
@@ -454,13 +461,16 @@ class Trainer(object):
         with tqdm.tqdm(self.train_data_loader) as tq:
             for step, (input_nodes, positive_graph, negative_graph,
                        blocks) in enumerate(tq):
-                # For transferring to CUDA
+                
                 if self.params['device'] == 'gpu':
                     blocks = [b.to(torch.device('cuda')) for b in blocks]
                     positive_graph = positive_graph.to(torch.device('cuda'))
                     negative_graph = negative_graph.to(torch.device('cuda'))
-
+                
+                # The blocks will contain the feature information of the nodes
                 input_features = blocks[0].srcdata['feature']
+                
+                # The pos and neg scores are just binary outputs 
                 pos_score, neg_score = self.model(positive_graph=positive_graph,
                                                   negative_graph=negative_graph,
                                                   blocks=blocks, x=input_features)
@@ -485,7 +495,7 @@ class Trainer(object):
 
 # COMMAND ----------
 
-# DBTITLE 1,Define an evaluator which samples subgraphs in the validation graph
+# DBTITLE 1,Define an evaluator which samples subgraphs in the validation graph and returns average ROC across the sampled subgraphs
 def evaluate(trained_model: torch.nn.Module,
              validation_data_loader: dgl.dataloading.EdgeDataLoader) -> (List, List):
   trained_model.eval()
@@ -613,6 +623,7 @@ class GNNWrapper(mlflow.pyfunc.PythonModel):
   def __init__(self, model, params):
     self.model = model
     self.params = params
+    
   def predict(self, context, model_input):
     # Create a graph structure with the model_input
     if isinstance(model_input, pd.DataFrame):

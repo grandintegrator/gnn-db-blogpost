@@ -41,7 +41,7 @@ get_gnn_prediction = mlflow.pyfunc.spark_udf(spark, f"models:/{model_name}/produ
 
 # COMMAND ----------
 
-# DBTITLE 1,Generate our gold table with inference includes
+# DBTITLE 1,Generate our gold table with inference included
 from pyspark.sql.functions import col
 
 # Read in our silver table
@@ -54,7 +54,7 @@ gold_table_with_pred.write.format("delta").mode("overwrite").saveAsTable('gold_r
 
 # COMMAND ----------
 
-# DBTITLE 1,Now we can see that there are indeed links that we had low confidence in that the GNN scores highly
+# DBTITLE 1,Now we can see that there are indeed links that the GNN has not seen which had low confidence but the GNN scores highly!
 # MAGIC %sql
 # MAGIC select Purchaser, Seller, probability, gnn_prediction from gold_relations_table
 # MAGIC where 1=1
@@ -64,7 +64,7 @@ gold_table_with_pred.write.format("delta").mode("overwrite").saveAsTable('gold_r
 
 # COMMAND ----------
 
-# DBTITLE 1,Finally, update the gold table to include outputs from our GNN
+# DBTITLE 1,Finally, update the gold table with the outputs from our GNN model - more links!
 from pyspark.sql.functions import when, col
 
 gold_with_predictions = spark.read.format("delta").table("gold_relations_table_with_predictions")
@@ -80,7 +80,7 @@ gold_relations.write.format("delta").mode("overwrite").saveAsTable("gold_relatio
 # COMMAND ----------
 
 # MAGIC %md-sandbox
-# MAGIC ## 4.2 Finally, we can go ahead and make our supply chain Dashboard!
+# MAGIC ## 4.2 Now we can go ahead and make our supply chain Dashboard!
 # MAGIC 
 # MAGIC <div style="float:right">
 # MAGIC   <img src="files/ajmal_aziz/gnn-blog/dashboard-1.png" alt="graph-training" width="1000px"", />

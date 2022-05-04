@@ -32,7 +32,8 @@
 # MAGIC | **Link Prediction (edge classification)** | Are two people friends?                                                                         | Social Network   | People   | Known friendships        |
 # MAGIC 
 # MAGIC <br> 
-# MAGIC Let us bring some math into the fold. Assuming we have a graph \\( \mathcal{G} = (\mathcal{V}, \mathcal{E})\\) where \\( \mathcal{V} \\) is the set of nodes in the graph, and \\( \mathcal{E} \\) is the set of edges defined as tuples \\( (u, v) \\) which denode connections between nodes \\( u \\) and \\( v \\) within our graph. Within this context, a GNN is a function that maps \\( u \\), some node in our graph into an embedding vector \\( \mathbf{h} \\). For link prediction, and in particular, predicting the existence of a link over our supply chain network, we make use of function that maps two given node embeddings into a range (0, 1) for the likelihood of a link existing between the two nodes. This function is defined as: \\( z_{i, j} = f(\mathbf{h}_i, \mathbf{h}_j)  \\) where \\( \mathbf{h}_i \\) and \\( \mathbf{h}_j \\) denote the embeddings for nodes \\( i \\) and \\( j \\) within our graph. This is a design choice, one commong function is defined as \\( \sigma(\mathbf{h}_i \cdot \mathbf{h_j})\\) where \\( \sigma \\) is the sigmoid function. An alternative method is to define a fully connected neural network layer which has it's weights trained during the overall GNN training stage. The next section will focus on how we generate these embeddings in a scalable fashion using a GNN.
+# MAGIC 
+# MAGIC Let us bring some math into the fold. Assuming we have a graph \\( \mathcal{G} = (\mathcal{V}, \mathcal{E})\\) where \\( \mathcal{V} \\) is the set of nodes in the graph, and \\( \mathcal{E} \\) is the set of edges defined as tuples \\( (u, v) \\) which denode connections between nodes \\( u \\) and \\( v \\) within our graph. Within this context, a GNN is a function that maps \\( u \\), some node in our graph into an embedding vector \\( \mathbf{h} \\). For link prediction, and in particular, predicting the existence of a link over our supply chain network, we make use of function that maps two given node embeddings into a range (0, 1) for the likelihood of a link existing between the two nodes. This function is defined as: \\( z_{i, j} = f(\mathbf{h}_i, \mathbf{h}_j)  \\) where \\( \mathbf{h}_i \\) and \\( \mathbf{h}_j \\) denote the embeddings for nodes \\( i \\) and \\( j \\) within our graph. This is a design choice, one common function is defined as \\( \sigma(\mathbf{h}_i \cdot \mathbf{h_j})\\) where \\( \sigma \\) is the sigmoid function. An alternative method is to define a fully connected neural network layer which has it's weights trained during the overall GNN training stage. The next section will focus on how we generate these embeddings in a scalable fashion using a GNN.
 
 # COMMAND ----------
 
@@ -54,7 +55,7 @@
 # MAGIC %md
 # MAGIC ### 3.1 More specifics on Link Prediction
 # MAGIC 
-# MAGIC The number of possible links in a graph is usually much larger than the total possible edges. This is particularly true in supply chain networks which scale-free characteristic [see here for further details](https://onlinelibrary.wiley.com/doi/10.1111/jbl.12283) due to having a hub-and-spoke model. This makes intuitive sense since one would expect large multinationals to be highly connect nodes within the graph with small companies grouped around them or having fewer connections. If we look at it more mathematically, the universal set of possible edges is generally significantly larger than the actualised edges. The task of link prediction is therefore to discern whether a given edge between any nodes \\(u\\) and \\(v\\) are in \\(\mathcal{E}^U - \mathcal{E}\\). The set \\(\mathcal{E}^U - \mathcal{E}\\) is the set of edges that have not been captured when building G, or are edges that will present themselves in the future (e.g. a new partnership between companies is formed). 
+# MAGIC The number of possible links in a graph is usually much larger than the total possible edges. This is particularly true in supply chain networks which scale-free characteristic [see here for further details](https://onlinelibrary.wiley.com/doi/10.1111/jbl.12283) due to having a hub-and-spoke model. This makes intuitive sense since one would expect large multinationals to be highly connect nodes within the graph with small companies grouped around them or having fewer connections. If we look at it more mathematically, the universal set of possible edges, \\(\mathcal{E}^U\\) is generally significantly larger than the actualised edges. The task of link prediction is therefore to discern whether a given edge between any nodes \\(u\\) and \\(v\\) are in \\(\mathcal{E}^U - \mathcal{E}\\). The set \\(\mathcal{E}^U - \mathcal{E}\\) is the set of edges that have not been captured when building \\(\mathcal{G}\\), or are edges that will present themselves in the future (e.g. when a new partnership between companies is formed).
 
 # COMMAND ----------
 
@@ -63,8 +64,8 @@
 # MAGIC   <img src="files/ajmal_aziz/gnn-blog/architecture.png" alt="graph-training" width="700px", />
 # MAGIC </div>
 # MAGIC 
-# MAGIC ## 4 Defining the Graph Neural Network model
-# MAGIC Our GNN model will consist of two GraphSAGE layers to generate node embeddings and will be trained using the edge data loaders we have defined above. The embeddings are then fed into a seperate (simple) neural network that will take as inputs the embeddings for source and destination nodes and provide a prediction for the likelihood of a link (binary classification). More formally, the neural network acts as \\( f: (\mathbf{h}_u, \mathbf{h}_v )\rightarrow z{_u}{_v} \\). All of the network weights are trained using a single loss function, either a binary cross entropy loss or a margin loss. During training and validation we collect pseudo-accuracy metrics like the loss and the ROC-AUC and use mlflow to track the metrics during training. Additionally, we use HyperOpt to perform Bayesian Optimisation for selecting the optimal set of parameters.
+# MAGIC ## 4 Defining the overall model structure 
+# MAGIC Our GNN model will consist of two GraphSAGE layers to generate node embeddings and will be trained using the edge data loaders we have defined above. The embeddings are then fed into a seperate (simple) neural network that will take as inputs the embeddings for source and destination nodes and provide a prediction for the likelihood of a link (binary classification). More formally, the neural network acts as \\( f: (\mathbf{h}_u, \mathbf{h}_v )\rightarrow z{_u}{_v} \\). All of the network weights are trained using a single loss function, either a binary cross entropy loss or a margin loss. During training and validation we collect pseudo-accuracy metrics like the loss and the ROC-AUC and use mlflow to track the metrics during training. The training will be mediated by [```dgl```](https://www.dgl.ai/) running a ```pytorch``` backend. During inference, the model is defined as ```pyfunc``` mlflow flavour.
 
 # COMMAND ----------
 
@@ -78,18 +79,27 @@
 # MAGIC 
 # MAGIC 
 # MAGIC The following steps outline how we will use GNNs for link prediction in this blog.
-# MAGIC - First, we split our collected (and assumed to be incomplete) graph into training, validation, and testing graphs. 
-# MAGIC - Second, for each of these partitions, we negatively sample fake edges. There are number of design choices here, one example is by corrupting head and tail nodes.
-# MAGIC - Third, we will generate embeddings using GraphSAGE by learning from the connectivity structures presented within the training graph. The loss function we will define will incentivise the model to generate embeddings such that the real edges are scored higher than the negatively sampled edges.
+# MAGIC 
+# MAGIC - We split our collected (and assumed to be incomplete) graph into training, validation, and testing graphs. We assign a randomly generated node embedding vector for each of the nodes in the graphs.
+# MAGIC - Since our graphs are large, we will sample neighbours (or subgraphs) for training. For each of these subgraphs, we sample fake edges that do not actualise (negative sampling).
+# MAGIC - We will generate embeddings using GraphSAGE by learning from the connectivity structures presented within the training graph. The loss function we will define will incentivise the model to generate embeddings such that the real edges are scored higher than the negatively sampled edges. 
+# MAGIC - Inference: GraphSAGE is inductive since it learns **functions** that sample and aggregate information from neighbourhood nodes. These functions can are then applied to new nodes for which we are unsure whether or not they are connected.
+# MAGIC 
+# MAGIC 
+# MAGIC There are a number of design choices here including how large should the subgraphs be? What should be the size of the node embedding vector? In order to address these points HyperOpt is used.
 
 # COMMAND ----------
 
 # MAGIC %md
 # MAGIC ### References
 # MAGIC 
-# MAGIC - https://papers.nips.cc/paper/2017/hash/5dd9db5e033da9c6fb5ba83c7a7ebea9-Abstract.html
-# MAGIC - https://www.cs.mcgill.ca/~wlh/grl_book/
-# MAGIC - https://ieeexplore.ieee.org/document/4700287
+# MAGIC 
+# MAGIC 1. [Hamilton, Ying, and Leskovic - Inductive Representation Learning on Large Graphs](Inductive Representation Learning on Large Graphs]https://papers.nips.cc/paper/2017/hash/5dd9db5e033da9c6fb5ba83c7a7ebea9-Abstract.html)
+# MAGIC - [Hamilton, W. - Graph Representation Learning](https://www.cs.mcgill.ca/~wlh/grl_book/)
+# MAGIC - [Scarselli et. al. - The Graph Neural Network Model](https://ieeexplore.ieee.org/document/4700287)
+# MAGIC - [Aziz et. al. - Data Considerations in Graph Representation Learning for Supply Chain
+# MAGIC Networks](https://arxiv.org/pdf/2107.10609.pdf)
+# MAGIC - [Teru et. al. - Inductive Relation Prediction by Subgraph Reasoning](https://arxiv.org/pdf/1911.06962.pdf)
 
 # COMMAND ----------
 
