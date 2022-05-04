@@ -22,6 +22,18 @@
 
 # COMMAND ----------
 
+# DBTITLE 1,Create a custom widget and use that database for our analysis
+dbutils.widgets.text(
+  name="database_name",
+  defaultValue='gnn_blog_db',
+  label="Database Name"
+)
+
+spark.sql(f"create database if not exists {database_name};")
+spark.sql(f"use {database_name};")
+
+# COMMAND ----------
+
 # DBTITLE 1,Defining as streaming source (our streaming landing zone) and destination, a delta table called bronze_company_data
 data_location = "dbfs:/FileStore/ajmal_aziz/gnn-blog/data/"
 
@@ -36,6 +48,7 @@ bronze_relation_data.writeStream\
                     .format("delta")\
                     .option("mergeSchema", "true")\
                     .option("checkpointLocation", data_location+"_checkpoint_bronze_stream_dir")\
+                    .trigger(once=True)\
                     .table("bronze_relation_data")
 
 # COMMAND ----------
@@ -80,7 +93,7 @@ silver_relation_data = spark.readStream\
  .format('delta')\
  .option("checkpointLocation", data_location+"_checkpoint_silver_relations")\
  .option('mergeSchema', 'true')\
- .trigger(processingTime="1 seconds")\
+ .trigger(once=True)\
  .table('silver_relation_data'))
 
 # COMMAND ----------
