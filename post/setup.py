@@ -48,6 +48,23 @@ import torch.nn.functional as F
 
 # COMMAND ----------
 
+def get_datasets_from_git(data_path: str) -> None:
+  import os
+  import zipfile
+  
+  dbutils.fs.mkdirs(f"dbfs:/FileStore/{data_path}/stream_landing_location/")
+  working_dir = os.path.split(os.getcwd())[0]
+  
+  with zipfile.ZipFile(f"{working_dir}/data/streamed_data.zip", "r") as zip_ref:
+      zip_ref.extractall(f"/dbfs/FileStore/{data_path}" + "/stream_landing_location")
+  
+  #   with zipfile.ZipFile(f"{working_dir}/data/.zip","r") as zip_ref:
+  #       zip_ref.extractall(datasets_data_path)
+  #   with zipfile.ZipFile(f"{working_dir}/data/.zip","r") as zip_ref:
+  #       zip_ref.extractall(datasets_data_path)    
+
+# COMMAND ----------
+
 def draw_probability_distribution(dataframe, probability_col):
   dataframe = dataframe.toPandas()
   dataframe[probability_col] = dataframe[probability_col].astype('float')
@@ -67,6 +84,10 @@ def draw_probability_distribution(dataframe, probability_col):
                   xaxis_title=r"Probability",
                   font=dict(size=24))
   fig.show()
+
+# COMMAND ----------
+
+
 
 # COMMAND ----------
 

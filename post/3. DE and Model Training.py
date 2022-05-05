@@ -23,37 +23,14 @@ dbutils.widgets.text(name="data_path", defaultValue="gnn_blog_data", label="File
 
 # COMMAND ----------
 
-working_dir = os.path.split(os.path.split(os.getcwd())[0])[0]
-print(working_dir)
-#   with zipfile.ZipFile(f"{working_dir}/data/streamed_data.zip","r") as zip_ref:
-#       zip_ref.extractall(datasets_data_path)
-
-# COMMAND ----------
-
-dbutils.fs.mkdirs(f"dbfs:/FileStore/{data_path}/stream_landing_location/")
-
-
-# COMMAND ----------
-
-
-
-# COMMAND ----------
-
-# DBTITLE 1,Choose a database for analysis
+# DBTITLE 1,Unzip data and choose a database for analysis
 data_path = dbutils.widgets.get("data_path")
 database_name = dbutils.widgets.get("database_name")
 
-# spark.sql(f"create database if not exists {database_name};")
-# spark.sql(f"use {database_name};")
-landing_location = "dbfs:/FileStore/ajmal_aziz/gnn-blog/data/stream_landing_location"
+get_datasets_from_git(data_path=dbutils.widgets.get("data_path"))
 
-
-# local_data_path  = f"/dbfs/FileStore/{data_path}/stream_landing_location/"
-# base_table_path = f"dbfs:/FileStore/{filestore_data_path}/stream_landing_location/"
-
-# COMMAND ----------
-
-# MAGIC %fs ls
+spark.sql(f"create database if not exists {database_name};")
+spark.sql(f"use {database_name};")
 
 # COMMAND ----------
 
@@ -61,14 +38,14 @@ landing_location = "dbfs:/FileStore/ajmal_aziz/gnn-blog/data/stream_landing_loca
 bronze_relation_data = spark.readStream\
                          .format("cloudFiles")\
                          .option("cloudFiles.format", "json")\
-                         .option("cloudFiles.schemaLocation", data_location+"_bronze_schema_location")\
+                         .option("cloudFiles.schemaLocation", full_data_path+"_bronze_schema_location")\
                          .option("cloudFiles.inferColumnTypes", "true")\
-                         .load(data_location+"stream_landing_location")
+                         .load(full_data_path + "stream_landing_location")
 
 bronze_relation_data.writeStream\
                     .format("delta")\
                     .option("mergeSchema", "true")\
-                    .option("checkpointLocation", data_location+"_checkpoint_bronze_stream_dir")\
+                    .option("checkpointLocation", full_data_path + "_checkpoint_bronze_stream_dir")\
                     .trigger(once=True)\
                     .table("bronze_relation_data")
 
