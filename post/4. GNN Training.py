@@ -1,10 +1,10 @@
 # Databricks notebook source
 # MAGIC %md 
-# MAGIC # 3. Implementation of our Supply Chain GNN Model
+# MAGIC # 4. Implementation: GNN Training
 
 # COMMAND ----------
 
-# MAGIC %md-sandbox ## 3.1 Data Engineering
+# MAGIC %md-sandbox ## 4.1 Machine Learning
 # MAGIC <div style="float:right">
 # MAGIC   <img src="https://github.com/grandintegrator/gnn-db-blogpost/blob/main/media/step_1-2.png?raw=True" alt="graph-training" width="840px", />
 # MAGIC </div>
@@ -19,80 +19,12 @@
 
 # DBTITLE 1,Create notebook widgets for database name and dataset paths
 dbutils.widgets.text(name="database_name", defaultValue="gnn_blog_db", label="Database Name")
-dbutils.widgets.text(name="data_path", defaultValue="gnn_blog_data", label="FileStore Path")
 
 # COMMAND ----------
 
 # DBTITLE 1,Unzip data and choose a database for analysis
-data_path = dbutils.widgets.get("data_path")
 database_name = dbutils.widgets.get("database_name")
-
-get_datasets_from_git(data_path=dbutils.widgets.get("data_path"))
-
-spark.sql(f"create database if not exists {database_name};")
 spark.sql(f"use {database_name};")
-
-# COMMAND ----------
-
-# DBTITLE 1,Defining as streaming source (our streaming landing zone) and destination, a delta table called bronze_company_data
-bronze_relation_data = spark.readStream\
-                         .format("cloudFiles")\
-                         .option("cloudFiles.format", "json")\
-                         .option("cloudFiles.schemaLocation", full_data_path+"_bronze_schema_location")\
-                         .option("cloudFiles.inferColumnTypes", "true")\
-                         .load(full_data_path + "stream_landing_location")
-
-bronze_relation_data.writeStream\
-                    .format("delta")\
-                    .option("mergeSchema", "true")\
-                    .option("checkpointLocation", full_data_path + "_checkpoint_bronze_stream_dir")\
-                    .trigger(once=True)\
-                    .table("bronze_relation_data")
-
-# COMMAND ----------
-
-bronze_company_data = spark.read.table("bronze_relation_data")
-display(bronze_company_data)
-
-# COMMAND ----------
-
-# MAGIC %md There are two pieces of data engineering required for this raw Bronze data:
-# MAGIC 1. Our ingestion scheme provides a probability and we do not want to train our GNN on low probability links so we will remove below a threshold.
-# MAGIC 1. We notice that raw company names have postfixes (e.g Ltd., LLC) denoting different legal entities but pointing to the same physical company. 
-
-# COMMAND ----------
-
-# DBTITLE 1,1. We note that the data set includes low likelihood pairs should not be used during training
-draw_probability_distribution(bronze_company_data, probability_col='probability')
-
-# COMMAND ----------
-
-# DBTITLE 1,2. We can use the cleanco package to remove legal entity postscripts within our raw data
-print(f"Cleaned example 1: {cleanco.basename('018f2b10979746da820c5269e4d87bb2 LLC')}")
-print(f"Cleaned example 2: {cleanco.basename('018f2b10979746da820c5269e4d87bb2 Ltd.')}")
-
-# COMMAND ----------
-
-# DBTITLE 1,We register this logic as a UDF and apply both DE tasks to our collected bronze table
-from pyspark.sql.types import StringType
-import pyspark.sql.functions as F
-
-clean_company_name = udf(lambda x: cleanco.basename(x), StringType())
-
-silver_relation_data = spark.readStream\
-                      .format("cloudFiles")\
-                      .option("cloudFiles.inferColumnTypes", "true")\
-                      .table("bronze_relation_data")\
-                      .filter(F.col("probability") >= 0.55)\
-                      .withColumn("Purchaser", clean_company_name(F.col("Purchaser")))\
-                      .withColumn("Seller", clean_company_name(F.col("Purchaser")))
-
-(silver_relation_data.writeStream\
- .format('delta')\
- .option("checkpointLocation", data_location+"_checkpoint_silver_relations")\
- .option('mergeSchema', 'true')\
- .trigger(once=True)\
- .table('silver_relation_data'))
 
 # COMMAND ----------
 
@@ -197,102 +129,6 @@ def get_edge_dataloaders(graph_partitions: Dict[str, dgl.DGLGraph],
             num_workers=params['num_workers'])
 
     return data_loaders
-
-# COMMAND ----------
-
-class DataLoader(object):
-    def __init__(self, params, spark):
-        self.params = params
-        self.company_table = (
-            spark.read.format('delta').table('silver_company_data')
-        )
-
-        self.graph = None
-        self.training_graph = None
-        self.testing_graph = None
-        self.validation_graph = None
-
-    def make_dgl_graph(self) -> dgl.DGLGraph:
-        """
-        Make a Graph object within DGL using just src_id and dst_id
-        """
-        source_company_id = \
-            np.array([x.src_id for x in self.company_table.select('src_id').collect()])
-        destination_company_id = \
-            np.array([x.dst_id for x in self.company_table.select('dst_id').collect()])
-        return dgl.graph((source_company_id, destination_company_id))
-
-    def make_graph_partitions(self) -> Dict[str, dgl.DGLGraph]:
-        """
-        Function creates graph partitions consisting of:
-         1. training graph: initial tuning of parameters
-         2. valid graph: final tuning
-         3. testing graph: for reporting final accuracy statistics
-        """
-        self.graph = self.make_dgl_graph()
-
-        src_ids, dst_ids = self.graph.edges()
-        test_size = int(self.params['test_p'] * len(src_ids))
-        valid_size = int(self.params['valid_p'] * len(dst_ids))
-        train_size = len(src_ids) - valid_size - test_size
-
-        # Source and destinations for training
-        src_train = src_ids[0:train_size]
-        dst_train = dst_ids[0:train_size]
-        # Source and destinations for validation
-        src_valid = src_ids[train_size: valid_size + train_size]
-        dst_valid = dst_ids[train_size: valid_size + train_size]
-
-        # Source and destinations for testing
-        src_test = src_ids[valid_size + train_size:]
-        dst_test = dst_ids[valid_size + train_size:]
-
-        self.training_graph = dgl.graph((src_train, dst_train))
-        self.validation_graph = dgl.graph((src_valid, dst_valid))
-        self.testing_graph = dgl.graph((src_test, dst_test))
-
-        return {'training': self.training_graph, 'validation': self.validation_graph,
-                'testing': self.testing_graph}
-
-    def get_edge_dataloaders(self) -> (Dict[str, dgl.dataloading.EdgeDataLoader],
-                                       Dict[str, dgl.DGLGraph],
-                                       dgl.DGLGraph):
-        """
-        Returns an edge loader for link prediction with sampling function
-         and negative sampling function as well as the graph partitions
-        """
-        graph_partitions = self.make_graph_partitions()
-
-        data_loaders = {}
-
-        # TODO: Have the neighbourhood and negative sampler as a parameter that
-        # get set during the tuning process
-        # sampler = dgl.dataloading.MultiLayerFullNeighborSampler(2)
-        sampler = dgl.dataloading.MultiLayerNeighborSampler([4, 4])
-        negative_sampler = dgl.dataloading.negative_sampler.Uniform(10)
-
-        for split in graph_partitions.keys():
-
-            # Associate node features with the graphs
-            graph_partitions[split].ndata['feature'] = (
-                torch.randn(graph_partitions[split].num_nodes(),
-                            self.params['num_node_features'])
-            )
-
-            # Create the data loader based on the sampler and negative sampler
-            data_loaders[split] = dgl.dataloading.EdgeDataLoader(
-                graph_partitions[split],
-                graph_partitions[split].edges(form='eid'),
-                sampler,
-                device=self.params['device'],
-                negative_sampler=negative_sampler,
-                batch_size=self.params['batch_size'],
-                shuffle=True,
-                drop_last=False,
-                pin_memory=True,
-                num_workers=self.params['num_workers'])
-
-        return data_loaders, graph_partitions, self.graph
 
 # COMMAND ----------
 
@@ -411,6 +247,13 @@ class Model(nn.Module):
 # COMMAND ----------
 
 # DBTITLE 1,We can now inspect our overall GNN + NN architecture
+# These parameters are later tuned using HyperOpt
+params = {'num_node_features': 20, 
+         'num_hidden_graph_layers': 5,
+         'num_node_features': 50,
+         'num_classes': 2, 
+         'aggregator_type': 'pool'}
+
 graph_model = Model(in_features=params['num_node_features'],
                     hidden_features=params['num_hidden_graph_layers'],
                     out_features=params['num_node_features'],

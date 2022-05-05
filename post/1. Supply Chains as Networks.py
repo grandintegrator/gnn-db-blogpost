@@ -41,8 +41,7 @@
 
 # COMMAND ----------
 
-# MAGIC 
-# MAGIC %md Let's print out the tables that we are going to be using throughout this blog. We will use these tables to generate our dashboard to view our supply chain health. The only table used during training of the GNN will be the streamed JSON data (once you are satisfied, proceeed to the theory notebook or straight to implementation!)
+
 
 # COMMAND ----------
 

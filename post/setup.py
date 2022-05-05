@@ -58,10 +58,8 @@ def get_datasets_from_git(data_path: str) -> None:
   with zipfile.ZipFile(f"{working_dir}/data/streamed_data.zip", "r") as zip_ref:
       zip_ref.extractall(f"/dbfs/FileStore/{data_path}" + "/stream_landing_location")
   
-  #   with zipfile.ZipFile(f"{working_dir}/data/.zip","r") as zip_ref:
-  #       zip_ref.extractall(datasets_data_path)
-  #   with zipfile.ZipFile(f"{working_dir}/data/.zip","r") as zip_ref:
-  #       zip_ref.extractall(datasets_data_path)    
+  with zipfile.ZipFile(f"{working_dir}/data/finance_data.zip","r") as zip_ref:
+        zip_ref.extractall(f"/dbfs/FileStore/{data_path}")
 
 # COMMAND ----------
 
