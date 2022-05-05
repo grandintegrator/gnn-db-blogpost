@@ -14,7 +14,9 @@
 # MAGIC In fact, images (and text) can be thought of as graphs with strict connectivity structure. Images can be represented as a grid of pixels (nodes) where the edges represent pixel connectivity. Graphs are therefore a generalisation of both images and text structured data. Borrowing from computer vision, reasoning over graph structured data in the deep learning context also involves generating learned embeddings from graphs. The embedding vectors encode structural information about the graphs which can exploited in downstream tasks. There are broadly two methods for generating these embedding vectors: shallow embeddings which make use of an encoder-decoder model and Graph Neural Networks (GNNs), a more complex encoding scheme. This post focuses on GNNs as they can be _inductive_, meaning that the entire set of nodes in the graph do not need to be known during training which suits our use case. The converse set of methods are _transductive_ which assume that the full set of nodes are present during the embedding process. For supply chain networks, a key problem constraint is that the network is dynamic due to company dynamics. Therefore the encoding method we choose must be adaptable to changes in the underlying network as new information is gathered. 
 # MAGIC 
 # MAGIC <div style="text-align:center">
-# MAGIC   <img src="files/ajmal_aziz/gnn-blog/text_image_network.png" alt="graph-structured-data" width="1200px">
+# MAGIC <!--   <img src="files/ajmal_aziz/gnn-blog/text_image_network.png" alt="graph-structured-data" width="1200px"> -->
+# MAGIC     <img src="  https://github.com/grandintegrator/gnn-db-blogpost/blob/main/media/text_image_network.png?raw=True" alt="graph-structured-data" width="1200px">
+# MAGIC 
 # MAGIC   <figcaption align="center"><b>Fig.3 Language and images contain implicit structure allowing for convolutions. How do we generalise convolutions across arbitrary structures? </b></figcaption>
 # MAGIC </div>
 
@@ -43,7 +45,9 @@
 # MAGIC 
 # MAGIC 
 # MAGIC <div style="text-align:center">
-# MAGIC   <img src="files/ajmal_aziz/gnn-blog/graph_convolutions.png" alt="embeddings" width="1200px">
+# MAGIC <!--   <img src="files/ajmal_aziz/gnn-blog/graph_convolutions.png" alt="embeddings" width="1200px"> -->
+# MAGIC     <img src="  https://github.com/grandintegrator/gnn-db-blogpost/blob/main/media/graph_convolutions.png?raw=True" alt="embeddings" width="1200px">
+# MAGIC 
 # MAGIC   <figcaption><b>Fig.4 Generalising convolutions for graph structured data with assumed node features.</b></figcaption>
 # MAGIC </div>
 # MAGIC 
@@ -61,7 +65,8 @@
 
 # MAGIC %md-sandbox
 # MAGIC <div style="float:right">
-# MAGIC   <img src="files/ajmal_aziz/gnn-blog/architecture.png" alt="graph-training" width="700px", />
+# MAGIC <!--   <img src="files/ajmal_aziz/gnn-blog/architecture.png" alt="graph-training" width="700px", /> -->
+# MAGIC     <img src="https://github.com/grandintegrator/gnn-db-blogpost/blob/main/media/architecture.png?raw=True" alt="graph-training" width="700px", />
 # MAGIC </div>
 # MAGIC 
 # MAGIC ## 4 Defining the overall model structure 
@@ -73,7 +78,8 @@
 # MAGIC ## 5. Implementation
 # MAGIC 
 # MAGIC <div style="float:right">
-# MAGIC   <img src="files/ajmal_aziz/gnn-blog/training_GNN.png" alt="graph-training" width="1200px"/>
+# MAGIC <!--   <img src="files/ajmal_aziz/gnn-blog/training_GNN.png" alt="graph-training" width="1200px"/> -->
+# MAGIC   <img src="https://github.com/grandintegrator/gnn-db-blogpost/blob/main/media/training_GNNs.png?raw=True" alt="graph-training" width="1200px"/>
 # MAGIC   <figcaption><b>Fig.5 Generalising convolutions for graph structured data with assumed node features.</b></figcaption>
 # MAGIC </div>
 # MAGIC 

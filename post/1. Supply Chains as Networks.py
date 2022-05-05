@@ -16,7 +16,7 @@
 
 # MAGIC %md-sandbox
 # MAGIC <div style="text-align:center">
-# MAGIC   <img src="files/ajmal_aziz/gnn-blog/supplier_network.png"  alt="graph-structured-data">
+# MAGIC   <img src="https://github.com/grandintegrator/gnn-db-blogpost/blob/main/media/supplier_network.png?raw=True"  alt="graph-structured-data">
 # MAGIC </div>
 # MAGIC 
 # MAGIC <figcaption align="center"><b>Fig.1 Arrows between suppliers represent buying and selling relationships. Firms typically see one layer of this network whilst there a web of other suppliers (and some potentially high risk) that are invisible. </b></figcaption>
@@ -31,7 +31,8 @@
 # MAGIC 
 # MAGIC <br>
 # MAGIC <div style="text-align:center">
-# MAGIC   <img src="files/ajmal_aziz/gnn-blog/architecture_including_ml-2.png" width=1500px alt="graph-structured-data">
+# MAGIC <!--   <img src="files/ajmal_aziz/gnn-blog/architecture_including_ml-2.png" width=1500px alt="graph-structured-data"> -->
+# MAGIC     <img src="https://github.com/grandintegrator/gnn-db-blogpost/blob/main/media/architecture_including_ml-2.png.png?raw=True" width=1500px alt="graph-structured-data">
 # MAGIC </div>
 # MAGIC 
 # MAGIC <figcaption align="center"><b>Fig.2 Adopted architecture for this blog post. </b></figcaption>

@@ -2,7 +2,7 @@
 # MAGIC %md-sandbox 
 # MAGIC 
 # MAGIC <div style="float:right">
-# MAGIC   <img src="files/ajmal_aziz/gnn-blog/step_3-3.png" alt="graph-training" width="700px", />
+# MAGIC   <img src="https://github.com/grandintegrator/gnn-db-blogpost/blob/main/media/step_3-3.png?raw=True" alt="graph-training" width="700px", />
 # MAGIC </div>
 # MAGIC 
 # MAGIC ## 4.1 Deploying our GNN to continuously refine our candidate edges!
@@ -12,7 +12,7 @@
 
 # MAGIC %md-sandbox
 # MAGIC <div style="float:right">
-# MAGIC   <img src="files/ajmal_aziz/gnn-blog/tsne_plot.png" alt="graph-training" width="700px" height="400px", />
+# MAGIC   <img src="https://github.com/grandintegrator/gnn-db-blogpost/blob/main/media/tsne_plot.png?raw=True" alt="graph-training" width="700px" height="400px", />
 # MAGIC </div>
 # MAGIC 
 # MAGIC The model registry allows us to version and stage models depending on their suitability for production. We can then inspect the model for the accuracy, loss, and other artifacts that will help decide whether or not to transition the model into production. For this model, we assess it's capability to distinguish between real and negatively sampled edges from our validation and testing graphs. Since this is a binary classification task, we can inspect the AUC values that we logged with the latest mlflow run. We see that the model has a **training AUC of 0.84, validation AUC of 0.93, and testing AUC of 0.95** which shoes good generalisation. We are also happy with the t-SNE plot and will therefore deploy the model to production.
@@ -83,7 +83,7 @@ gold_relations.write.format("delta").mode("overwrite").saveAsTable("gold_relatio
 # MAGIC ## 4.2 Now we can go ahead and make our supply chain Dashboard!
 # MAGIC 
 # MAGIC <div style="float:right">
-# MAGIC   <img src="files/ajmal_aziz/gnn-blog/dashboard-1.png" alt="graph-training" width="1000px"", />
+# MAGIC   <img src="https://github.com/grandintegrator/gnn-db-blogpost/blob/main/media/dashboard-1.png?raw=True" alt="graph-training" width="1000px"", />
 # MAGIC </div>
 
 # COMMAND ----------

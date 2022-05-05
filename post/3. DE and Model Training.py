@@ -6,7 +6,7 @@
 
 # MAGIC %md-sandbox ## 3.1 Data Engineering
 # MAGIC <div style="float:right">
-# MAGIC   <img src="files/ajmal_aziz/gnn-blog/step_1-2.png" alt="graph-training" width="840px", />
+# MAGIC   <img src="https://github.com/grandintegrator/gnn-db-blogpost/blob/main/media/step_1-2.png?raw=True" alt="graph-training" width="840px", />
 # MAGIC </div>
 # MAGIC 
 # MAGIC We begin by ingesting our streaming data using Autoloader and saving as a delta table. Additionally we read in CSV files from our internal teams and convert them to delta tables for more efficient querying.
@@ -17,26 +17,47 @@
 
 # COMMAND ----------
 
-# DBTITLE 1,We leverage the dgl for graph machine learning
-!pip install dgl
+# DBTITLE 1,Create notebook widgets for database name and dataset paths
+dbutils.widgets.text(name="database_name", defaultValue="gnn_blog_db", label="Database Name")
+dbutils.widgets.text(name="data_path", defaultValue="gnn_blog_data", label="FileStore Path")
 
 # COMMAND ----------
 
-# DBTITLE 1,Create a custom widget and use that database for our analysis
-dbutils.widgets.text(
-  name="database_name",
-  defaultValue='gnn_blog_db',
-  label="Database Name"
-)
+working_dir = os.path.split(os.path.split(os.getcwd())[0])[0]
+print(working_dir)
+#   with zipfile.ZipFile(f"{working_dir}/data/streamed_data.zip","r") as zip_ref:
+#       zip_ref.extractall(datasets_data_path)
 
-spark.sql(f"create database if not exists {database_name};")
-spark.sql(f"use {database_name};")
+# COMMAND ----------
+
+dbutils.fs.mkdirs(f"dbfs:/FileStore/{data_path}/stream_landing_location/")
+
+
+# COMMAND ----------
+
+
+
+# COMMAND ----------
+
+# DBTITLE 1,Choose a database for analysis
+data_path = dbutils.widgets.get("data_path")
+database_name = dbutils.widgets.get("database_name")
+
+# spark.sql(f"create database if not exists {database_name};")
+# spark.sql(f"use {database_name};")
+landing_location = "dbfs:/FileStore/ajmal_aziz/gnn-blog/data/stream_landing_location"
+
+
+# local_data_path  = f"/dbfs/FileStore/{data_path}/stream_landing_location/"
+# base_table_path = f"dbfs:/FileStore/{filestore_data_path}/stream_landing_location/"
+
+# COMMAND ----------
+
+# MAGIC %fs ls
 
 # COMMAND ----------
 
 # DBTITLE 1,Defining as streaming source (our streaming landing zone) and destination, a delta table called bronze_company_data
-data_location = "dbfs:/FileStore/ajmal_aziz/gnn-blog/data/"
-
 bronze_relation_data = spark.readStream\
                          .format("cloudFiles")\
                          .option("cloudFiles.format", "json")\
@@ -100,7 +121,7 @@ silver_relation_data = spark.readStream\
 
 # MAGIC %md-sandbox
 # MAGIC <div style="float:right">
-# MAGIC   <img src="files/ajmal_aziz/gnn-blog/training_GNN.png" alt="graph-training" width="840px", />
+# MAGIC   <img src="https://github.com/grandintegrator/gnn-db-blogpost/blob/main/media/training_GNNs.png?raw=True" alt="graph-training" width="840px", />
 # MAGIC </div>
 # MAGIC 
 # MAGIC ## 3.2 Training our Graph Neural Network
@@ -300,7 +321,7 @@ class DataLoader(object):
 
 # MAGIC %md-sandbox
 # MAGIC <div style="float:right">
-# MAGIC   <img src="files/ajmal_aziz/gnn-blog/architecture.png" alt="graph-training" width="700px", />
+# MAGIC   <img src="https://github.com/grandintegrator/gnn-db-blogpost/blob/main/media/architecture.png?raw=True" alt="graph-training" width="700px", />
 # MAGIC </div>
 # MAGIC 
 # MAGIC ### 3.2.1 Defining the Graph Neural Network model
@@ -621,7 +642,7 @@ best_parameters = {'aggregator_type': 'pool',
 
 # MAGIC %md-sandbox
 # MAGIC <div style="float:right">
-# MAGIC   <img src="files/ajmal_aziz/gnn-blog/logged_model.gif" alt="graph-training" width="700px", />
+# MAGIC   <img src="https://github.com/grandintegrator/gnn-db-blogpost/blob/main/media/logged_model.gif?raw=True" alt="graph-training" width="700px", />
 # MAGIC </div>
 # MAGIC 
 # MAGIC ### 3.3.3 Logging the GNN model into the model registry using mlflow

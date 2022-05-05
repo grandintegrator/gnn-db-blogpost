@@ -34,7 +34,7 @@ from typing import Dict, Any
 from sklearn.metrics import roc_auc_score
 from sklearn.metrics import average_precision_score
 from torch.nn import Sigmoid
-
+import os
 import matplotlib.pyplot as plt
 import numpy as np
 import torch.nn as nn
@@ -73,17 +73,12 @@ def draw_probability_distribution(dataframe, probability_col):
 simplefilter(action='ignore', category=UserWarning)
 simplefilter(action='ignore', category=FutureWarning)
 
-# Load run configuration settings from config file
-with open('../config/config.yaml', 'r') as config_file:
-    params = yaml.safe_load(config_file)
+# # Load run configuration settings from config file
+# with open('../config/config.yaml', 'r') as config_file:
+#     params = yaml.safe_load(config_file)
 
-spark.sql(f"USE {params['database']}")
-logging.info(f"Using {params['database']}")
-
-# COMMAND ----------
-
-# MAGIC %sql
-# MAGIC show tables in ajmal_aziz_gnn_blog
+# spark.sql(f"USE {params['database']}")
+# logging.info(f"Using {params['database']}")
 
 # COMMAND ----------
 
