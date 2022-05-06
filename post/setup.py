@@ -7,6 +7,7 @@ try:
   import cleanco
 except ModuleNotFoundError:
   !pip install cleanco
+import cleanco
 from warnings import simplefilter
 from typing import Dict, Any, List
 
@@ -15,7 +16,7 @@ try:
   import dgl
 except ModuleNotFoundError:
   !pip install dgl
-  
+import dgl
 import numpy as np
 import torch
 import mlflow
@@ -39,6 +40,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch.nn as nn
 import torch.nn.functional as F
+
 import dgl.function as fn
 from dgl.nn.pytorch.conv import SAGEConv
 import pandas as pd

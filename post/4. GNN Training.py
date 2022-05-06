@@ -6,7 +6,7 @@
 
 # MAGIC %md-sandbox ## 4.1 Machine Learning
 # MAGIC <div style="float:right">
-# MAGIC   <img src="https://github.com/grandintegrator/gnn-db-blogpost/blob/main/media/step_1-2.png?raw=True" alt="graph-training" width="840px", />
+# MAGIC   <img src="https://github.com/grandintegrator/gnn-db-blogpost/blob/main/media/ml-workflow.png?raw=True" alt="graph-training" width="840px", />
 # MAGIC </div>
 # MAGIC 
 # MAGIC We begin by ingesting our streaming data using Autoloader and saving as a delta table. Additionally we read in CSV files from our internal teams and convert them to delta tables for more efficient querying.
@@ -248,11 +248,21 @@ class Model(nn.Module):
 
 # DBTITLE 1,We can now inspect our overall GNN + NN architecture
 # These parameters are later tuned using HyperOpt
-params = {'num_node_features': 20, 
-         'num_hidden_graph_layers': 5,
-         'num_node_features': 50,
-         'num_classes': 2, 
-         'aggregator_type': 'pool'}
+params = {"test_p": 0.10,
+          "valid_p": 0.20,
+          "optimiser": 'Adam',
+          "loss": 'binary_cross_entropy',
+          "num_node_features": 15,
+          "num_hidden_graph_layers": 20,
+          "num_negative_samples": 3,
+          "num_classes": 2,
+          "batch_size": 12, # Mini batch size for the graph
+          "num_epochs": 200,
+          "num_workers": 0,
+          "lr": 0.001,
+          "l2_regularisation": 0.0005,
+          "momentum": 0.05,
+          "aggregator_type": 'mean'}
 
 graph_model = Model(in_features=params['num_node_features'],
                     hidden_features=params['num_hidden_graph_layers'],
@@ -294,16 +304,18 @@ class Trainer(object):
                                   weight_decay=self.params['l2_regularisation'])
 
     def compute_loss(self, pos_score, neg_score):
-        n = pos_score_edge.shape[0]
+        pos_score_edge = self.sigmoid(pos_score)
+        neg_score_edge = self.sigmoid(neg_score)
+        n = pos_score.shape[0]
         if self.params['loss'] == 'margin':
             margin_loss = \
-                (neg_score_edge.view(n, -1) - pos_score_edge.view(n, -1) + 1) \
+                (pos_score.view(n, -1) - pos_score.view(n, -1) + 1) \
                     .clamp(min=0).mean()
             return margin_loss
         elif self.params['loss'] == 'binary_cross_entropy':
-            scores = cat([pos_score_edge, neg_score_edge])
-            labels = cat([ones(pos_score_edge.shape[0]),
-                          zeros(neg_score_edge.shape[0])])
+            scores = cat([pos_score, neg_score])
+            labels = cat([ones(pos_score.shape[0]),
+                          zeros(neg_score.shape[0])])
             scores = scores.view(len(scores), -1).mean(dim=1)
             binary_cross_entropy = F.binary_cross_entropy_with_logits(scores, labels)
             return binary_cross_entropy
@@ -435,28 +447,28 @@ def train_and_evaluate_gnn(params_hyperopt):
 argmin = fmin(fn=train_and_evaluate_gnn,
             space=params_hyperopt,
             algo=tpe.suggest,
-            max_evals=10,
-            trials=SparkTrials(parallelism=4))
+            max_evals=50,
+            trials=SparkTrials(parallelism=8))
 
 # COMMAND ----------
 
 # best_parameters = hyperopt.space_eval(params_hyperopt, argmin)
 best_parameters = {'aggregator_type': 'pool',
- 'batch_size': 32,
- 'device': 'cpu',
- 'l2_regularisation': 0.005,
- 'loss': 'margin',
- 'lr': 0.01,
- 'momentum': 0.005,
- 'num_classes': 2,
- 'num_epochs': 2000,
- 'num_hidden_graph_layers': 100,
- 'num_negative_samples': 50,
- 'num_node_features': 50,
- 'num_workers': 0,
- 'optimiser': 'SGD',
- 'test_p': 0.1,
- 'valid_p': 0.2}
+   'batch_size': 32,
+   'device': 'cpu',
+   'l2_regularisation': 0.005,
+   'loss': 'margin',
+   'lr': 0.01,
+   'momentum': 0.005,
+   'num_classes': 2,
+   'num_epochs': 2000,
+   'num_hidden_graph_layers': 100,
+   'num_negative_samples': 50,
+   'num_node_features': 50,
+   'num_workers': 0,
+   'optimiser': 'SGD',
+   'test_p': 0.1,
+   'valid_p': 0.2}
 
 # COMMAND ----------
 
