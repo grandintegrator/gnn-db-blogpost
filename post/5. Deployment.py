@@ -71,7 +71,10 @@ gold_with_predictions = spark.read.format("delta").table("gold_relations_table_w
 
 # Change the probability column accoridng to the gnn outputs
 gold_relations = gold_with_predictions\
-                  .withColumn("probability", when(col("gnn_prediction") >= col("probability"), col("gnn_prediction")).otherwise(col("probability")))\
+                  .withColumn("probability",
+                              when(col("gnn_prediction") >= col("probability"),
+                                   col("gnn_prediction"))\
+                              .otherwise(col("probability")))
                   .drop(col("gnn_prediction"))
 
 # Register as the final table for BI

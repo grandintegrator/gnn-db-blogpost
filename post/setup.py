@@ -87,19 +87,30 @@ def draw_probability_distribution(dataframe, probability_col):
 
 # COMMAND ----------
 
-
+# Parameters are defined in setup, they are basic and are later tuned using HyperOpt
+params = {
+  "test_p": 0.10,
+  "valid_p": 0.20,
+  "optimiser": "Adam",
+  "loss": "binary_cross_entropy",
+  "num_node_features": 15,
+  "num_hidden_graph_layers": 20,
+  "num_negative_samples": 3,
+  "num_classes": 2,
+  "batch_size": 12, # Mini batch size for the graph
+  "num_epochs": 200,
+  "num_workers": 0,
+  "lr": 0.001,
+  "l2_regularisation": 0.0005,
+  "momentum": 0.05,
+  "aggregator_type": "mean", 
+  "device": "cpu"
+}
 
 # COMMAND ----------
 
 simplefilter(action='ignore', category=UserWarning)
 simplefilter(action='ignore', category=FutureWarning)
-
-# # Load run configuration settings from config file
-# with open('../config/config.yaml', 'r') as config_file:
-#     params = yaml.safe_load(config_file)
-
-# spark.sql(f"USE {params['database']}")
-# logging.info(f"Using {params['database']}")
 
 # COMMAND ----------
 

@@ -5,11 +5,9 @@
 # COMMAND ----------
 
 # MAGIC %md-sandbox ## 4.1 Machine Learning
-# MAGIC <div style="float:right">
+# MAGIC <div>
 # MAGIC   <img src="https://github.com/grandintegrator/gnn-db-blogpost/blob/main/media/ml-workflow.png?raw=True" alt="graph-training" width="840px", />
 # MAGIC </div>
-# MAGIC 
-# MAGIC We begin by ingesting our streaming data using Autoloader and saving as a delta table. Additionally we read in CSV files from our internal teams and convert them to delta tables for more efficient querying.
 
 # COMMAND ----------
 
@@ -100,19 +98,22 @@ def get_edge_dataloaders(graph_partitions: Dict[str, dgl.DGLGraph],
                                                      Dict[str, dgl.DGLGraph],
                                                      dgl.DGLGraph):
     """
-    Returns an edge loader for link prediction for each partition of the graph (training, validation, testing)
+    Returns an edge loader for link prediction for each partition of the graph 
     with sampling function and negative sampling function as well as the graph partitions.
     """
     data_loaders = {}
     sampler = dgl.dataloading.MultiLayerNeighborSampler([4, 4])
     
-    # Draws params['num_negative_samples'] samples of non-existent edges from the uniform distribution
-    negative_sampler = dgl.dataloading.negative_sampler.Uniform(params['num_negative_samples'])
+    # Draws samples of non-existent edges from the uniform distribution
+    negative_sampler = (
+      dgl.dataloading.negative_sampler.Uniform(params['num_negative_samples'])
+    )
 
     for split in graph_partitions.keys():
         # Create a feature vector for every node [1 x num_node_features]
         graph_partitions[split].ndata['feature'] = (
-            torch.randn(graph_partitions[split].num_nodes(), params['num_node_features'])
+            torch.randn(graph_partitions[split].num_nodes(),
+                        params['num_node_features'])
         )
 
         # Create the data loader based on the sampler and negative sampler
@@ -179,7 +180,7 @@ class GraphSAGE(nn.Module):
         self.conv1 = SAGEConv(in_feats=in_feats, out_feats=hid_feats,
                               aggregator_type=aggregator_type)
         self.conv2 = SAGEConv(in_feats=hid_feats, out_feats=out_feats,
-            aggregator_type=aggregator_type)
+                              aggregator_type=aggregator_type)
 
     def forward(self, blocks, inputs):
         # inputs are features of nodes
@@ -207,13 +208,9 @@ class GraphSAGE(nn.Module):
             # Within a layer, iterate over nodes in batches
             for input_nodes, output_nodes, blocks in dataloader:
                 block = blocks[0]
-                # Copy the features of necessary input nodes to GPU
                 h = x[input_nodes].to(device)
-                # Compute output.  Note that this computation is the same
-                # but only for a single layer.
                 h_dst = h[:block.number_of_dst_nodes()]
                 h = F.relu(layer(block, (h, h_dst)))
-                # Copy to output back to CPU.
                 y[output_nodes] = h.cpu()
 
             x = y
@@ -222,8 +219,6 @@ class GraphSAGE(nn.Module):
 # COMMAND ----------
 
 # DBTITLE 1,Putting it all together with GraphSAGE to generate embeddings and MLPPredictor to classify links
-from utils import GraphSAGE
-
 class Model(nn.Module):
     def __init__(self, in_features, hidden_features, out_features, num_classes,
                  aggregator_type):
@@ -247,23 +242,7 @@ class Model(nn.Module):
 # COMMAND ----------
 
 # DBTITLE 1,We can now inspect our overall GNN + NN architecture
-# These parameters are later tuned using HyperOpt
-params = {"test_p": 0.10,
-          "valid_p": 0.20,
-          "optimiser": 'Adam',
-          "loss": 'binary_cross_entropy',
-          "num_node_features": 15,
-          "num_hidden_graph_layers": 20,
-          "num_negative_samples": 3,
-          "num_classes": 2,
-          "batch_size": 12, # Mini batch size for the graph
-          "num_epochs": 200,
-          "num_workers": 0,
-          "lr": 0.001,
-          "l2_regularisation": 0.0005,
-          "momentum": 0.05,
-          "aggregator_type": 'mean'}
-
+# Parameters are defined in setup, they are basic and are later tuned using HyperOpt
 graph_model = Model(in_features=params['num_node_features'],
                     hidden_features=params['num_hidden_graph_layers'],
                     out_features=params['num_node_features'],
@@ -414,14 +393,13 @@ params_hyperopt = {**params_hyperopt, **static_params}
 # Let's create a static training, validation, and testing set of graphs
 graph_partitions = make_graph_partitions(graph=supplier_graph, params=params)
 
-def train_and_evaluate_gnn(params_hyperopt):
-  assert type(params_hyperopt['num_negative_samples']) == int
+def train_and_evaluate_gnn(params_hyperopt: Dict[str, Any]) -> Dict[str, Any]:
   # New set of data loaders given the parameter set
   graph_model = Model(in_features=params_hyperopt['num_node_features'],
-                    hidden_features=params_hyperopt['num_hidden_graph_layers'],
-                    out_features=params_hyperopt['num_node_features'],
-                    num_classes=params_hyperopt['num_classes'],
-                    aggregator_type=params_hyperopt['aggregator_type'])
+                      hidden_features=params_hyperopt['num_hidden_graph_layers'],
+                      out_features=params_hyperopt['num_node_features'],
+                      num_classes=params_hyperopt['num_classes'],
+                      aggregator_type=params_hyperopt['aggregator_type'])
 
   data_loaders = get_edge_dataloaders(graph_partitions=graph_partitions,
                                       params=params_hyperopt)
@@ -505,14 +483,15 @@ class GNNWrapper(mlflow.pyfunc.PythonModel):
     with torch.no_grad():
       predictions = \
               self.model.get_embeddings(g=g,x=g.ndata['feature'],
-                                        batch_size=self.params['batch_size'], device='cpu',
+                                        batch_size=self.params['batch_size'],
+                                        device='cpu',
                                         provide_prediction=True)
     return predictions.detach().numpy().squeeze()
 
 # COMMAND ----------
 
 # DBTITLE 1,We create a seperate mlflow run with the best parameters, log the model, and the t-SNE of the learned embeddings
-with mlflow.start_run(run_name="GNN-SUPPLY-CHAIN") as run:
+with mlflow.start_run(run_name="Supply Chain GNN") as run:
   # Log the parameters of the model run
   mlflow.set_tag("link-prediction", "GraphSAGE")
   mlflow.log_params(best_parameters)
@@ -553,7 +532,8 @@ with mlflow.start_run(run_name="GNN-SUPPLY-CHAIN") as run:
   # ----------------------------------------------------------------------------
   gnn_model_pyfunc = GNNWrapper(training_results['model'], params=best_parameters)
   signature = infer_signature(silver_relation_table, 
-                              gnn_model_pyfunc.predict(None, model_input=silver_relation_table))
+                              gnn_model_pyfunc.predict(None,
+                                                       model_input=silver_relation_table))
   mlflow.pyfunc.log_model(artifact_path="gnn_model", signature=signature,
                           python_model=gnn_model_pyfunc)
   
