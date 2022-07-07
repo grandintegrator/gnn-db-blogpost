@@ -1,3 +1,8 @@
-# Graph Neural Networks on Databricks
+# Using MLflow to deploy Graph Neural Networks for Monitoring Supply Chain Risk
 
-Repo for a really cool blog post on training and deploying GNNs on the Databricks platform
+:link: Blog post link is upcoming - currently under review.
+
+
+## Architecture
+
+<img src="https://github.com/grandintegrator/gnn-db-blogpost/blob/main/media/architecture_including_ml-2.png.png?raw=True" width=1500px alt="graph-structured-data">
