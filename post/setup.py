@@ -1,4 +1,5 @@
 # Databricks notebook source
+# Library Imports
 import argparse
 import logging
 import yaml
@@ -50,6 +51,11 @@ import torch.nn.functional as F
 
 # COMMAND ----------
 
+# MAGIC %md 
+# MAGIC Helper functions
+
+# COMMAND ----------
+
 def get_datasets_from_git(data_path: str) -> None:
   import os
   import zipfile
@@ -87,7 +93,10 @@ def draw_probability_distribution(dataframe, probability_col):
 
 # COMMAND ----------
 
-# Parameters are defined in setup, they are basic and are later tuned using HyperOpt
+# MAGIC %md Parameters are defined in setup, they are basic and are later tuned using HyperOpt
+
+# COMMAND ----------
+
 params = {
   "test_p": 0.10,
   "valid_p": 0.20,

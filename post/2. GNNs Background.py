@@ -9,6 +9,10 @@
 
 # COMMAND ----------
 
+
+
+# COMMAND ----------
+
 # MAGIC %md-sandbox 
 # MAGIC ### 2.2 Graph Embeddings
 # MAGIC In fact, images (and text) can be thought of as graphs with strict connectivity structure. Images can be represented as a grid of pixels (nodes) where the edges represent pixel connectivity. Graphs are therefore a generalisation of both images and text structured data. Borrowing from computer vision, reasoning over graph structured data in the deep learning context also involves generating learned embeddings from graphs. The embedding vectors encode structural information about the graphs which can exploited in downstream tasks. There are broadly two methods for generating these embedding vectors: shallow embeddings which make use of an encoder-decoder model and Graph Neural Networks (GNNs), a more complex encoding scheme. This post focuses on GNNs as they can be _inductive_, meaning that the entire set of nodes in the graph do not need to be known during training which suits our use case. The converse set of methods are _transductive_ which assume that the full set of nodes are present during the embedding process. For supply chain networks, a key problem constraint is that the network is dynamic due to company dynamics. Therefore the encoding method we choose must be adaptable to changes in the underlying network as new information is gathered. 
