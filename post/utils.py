@@ -102,7 +102,7 @@ def compute_auc_ap(pos_score, neg_score) -> Dict[str, Any]:
       [ones(pos_score_edge.shape[0]),
        zeros(neg_score_edge.shape[0])]).detach().numpy()
 
-  results['AUC'] = roc_auc_score(labels.astype('int'), scores.squeeze())
+  results['AUC'] = roc_auc_score(labels, scores)
   results['AP'] = average_precision_score(labels, scores)
   return results
 
@@ -118,7 +118,7 @@ def plot_tsne_embeddings(graph_embeddings: torch.Tensor):
 
     # Due to the large size, only plot about ~30% of the embeddings
     indices = np.random.choice(range(graph_embeddings.shape[0]),
-                               round(graph_embeddings.shape[0]*0.001),
+                               round(graph_embeddings.shape[0]*0.1),
                                replace=False)
     t_sne_embeddings = (
         TSNE(n_components=2, perplexity=30, method='barnes_hut')
