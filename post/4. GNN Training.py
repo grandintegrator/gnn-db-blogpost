@@ -38,6 +38,10 @@ spark.sql(f"use {database_name};")
 
 # COMMAND ----------
 
+silver_relation_table = spark.read.format('delta').table('silver_relation_data')
+
+# COMMAND ----------
+
 # DBTITLE 1,We begin by making a DGL (Deep Graph Library) Graph object from our Silver table
 silver_relation_table = spark.read.format('delta').table('silver_relation_data')
 
@@ -47,9 +51,8 @@ def make_dgl_graph(relation_table) -> dgl.DGLGraph:
     Nodes: Companies with unique src_id or dst_id
     Edges: Company A (with src_id) --> buys_from --> Company B (with dst_id)
     """
-    source_company_id = np.array([x.src_id for x in relation_table.select('src_id').collect()])
-    destination_company_id = np.array([x.dst_id for x in relation_table.select('dst_id').collect()])
-    return dgl.graph((source_company_id, destination_company_id))
+    triplets = [(x.src_id, x.dst_id) for x in relation_table.select("src_id", "dst_id").collect()]
+    return dgl.graph(triplets)
 
 supplier_graph = make_dgl_graph(relation_table=silver_relation_table)
 
@@ -121,12 +124,10 @@ def get_edge_dataloaders(graph_partitions: Dict[str, dgl.DGLGraph],
             graph_partitions[split],
             graph_partitions[split].edges(form='eid'),
             sampler,
-            device=params['device'],
             negative_sampler=negative_sampler,
             batch_size=params['batch_size'],
             shuffle=True,
             drop_last=False,
-            pin_memory=True,
             num_workers=params['num_workers'])
 
     return data_loaders
@@ -288,7 +289,7 @@ class Trainer(object):
         n = pos_score.shape[0]
         if self.params['loss'] == 'margin':
             margin_loss = \
-                (pos_score.view(n, -1) - pos_score.view(n, -1) + 1) \
+                (neg_score_edge.view(n, -1) - pos_score.view(n, -1) + 1) \
                     .clamp(min=0).mean()
             return margin_loss
         elif self.params['loss'] == 'binary_cross_entropy':
@@ -307,7 +308,7 @@ class Trainer(object):
             for step, (input_nodes, positive_graph, negative_graph,
                        blocks) in enumerate(tq):
                 
-                if self.params['device'] == 'gpu':
+                if self.params['device'] == 'cuda':
                     blocks = [b.to(torch.device('cuda')) for b in blocks]
                     positive_graph = positive_graph.to(torch.device('cuda'))
                     negative_graph = negative_graph.to(torch.device('cuda'))
@@ -374,7 +375,7 @@ params_hyperopt = {'optimiser': hp.choice('optimiser', ["Adam", "SGD"]),
                    'num_node_features': hp.choice('num_node_features', [2, 10, 20, 50, 100]),
                    'num_hidden_graph_layers': hp.choice('num_hidden_graph_layers', [5, 15, 100]),
                    'batch_size': hp.choice('batch_size', [16, 32, 64, 128]),
-                   'num_negative_samples': hp.choice('num_negative_samples', [10, 50, 100, 400]),
+                   'num_negative_samples': hp.choice('num_negative_samples', [3, 10, 50]),
                    'num_epochs': hp.choice('num_epochs', [1000, 2000, 8000]),
                    'l2_regularisation': hp.choice('l2_regularisation', [5e-4, 5e-3, 5e-2]),
                    'momentum': hp.choice('momentum', [5e-4, 5e-3, 5e-2]),
@@ -425,13 +426,16 @@ def train_and_evaluate_gnn(params_hyperopt: Dict[str, Any]) -> Dict[str, Any]:
 argmin = fmin(fn=train_and_evaluate_gnn,
             space=params_hyperopt,
             algo=tpe.suggest,
-            max_evals=50,
+            max_evals=20,
             trials=SparkTrials(parallelism=8))
 
 # COMMAND ----------
 
-# best_parameters = hyperopt.space_eval(params_hyperopt, argmin)
-best_parameters = {'aggregator_type': 'pool',
+ran_hyperopt = False
+if ran_hyperopt:
+  best_parameters = hyperopt.space_eval(params_hyperopt, argmin)
+else: 
+  best_parameters = {'aggregator_type': 'pool',
    'batch_size': 32,
    'device': 'cpu',
    'l2_regularisation': 0.005,
@@ -468,6 +472,9 @@ class GNNWrapper(mlflow.pyfunc.PythonModel):
     self.model = model
     self.params = params
     
+  def test(self):
+    print(self.params)
+    
   def predict(self, context, model_input):
     # Create a graph structure with the model_input
     if isinstance(model_input, pd.DataFrame):
@@ -483,10 +490,10 @@ class GNNWrapper(mlflow.pyfunc.PythonModel):
     with torch.no_grad():
       predictions = \
               self.model.get_embeddings(g=g,x=g.ndata['feature'],
-                                        batch_size=self.params['batch_size'],
+                                        batch_size=self.params['batch_size'], 
                                         device='cpu',
                                         provide_prediction=True)
-    return predictions.detach().numpy().squeeze()
+    return predictions.to('cpu').detach().numpy().squeeze()
 
 # COMMAND ----------
 
@@ -531,6 +538,7 @@ with mlflow.start_run(run_name="Supply Chain GNN") as run:
   # Log the final trained model
   # ----------------------------------------------------------------------------
   gnn_model_pyfunc = GNNWrapper(training_results['model'], params=best_parameters)
+  
   signature = infer_signature(silver_relation_table, 
                               gnn_model_pyfunc.predict(None,
                                                        model_input=silver_relation_table))
@@ -551,6 +559,10 @@ with mlflow.start_run(run_name="Supply Chain GNN") as run:
     )
     t_sne_fig = plot_tsne_embeddings(graph_embeddings=training_graph_embeddings)
     mlflow.log_figure(t_sne_fig, 'visualisations/tsne_plot.html')
+
+# COMMAND ----------
+
+print(gnn_model_pyfunc.test())
 
 # COMMAND ----------
 

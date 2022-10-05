@@ -13,10 +13,15 @@ from warnings import simplefilter
 from typing import Dict, Any, List
 
 # Graph machine learning:
-try:
-  import dgl
-except ModuleNotFoundError:
-  !pip install dgl
+!pip install dgl
+
+# Uncomment below if you want to run on GPU
+# !pip install -U spacy
+# !pip install -U thinc
+# !pip install -U pydantic
+# !pip install dgl-cu113 dglgo -f https://data.dgl.ai/wheels/repo.html
+# !pip install dgl-cu113 dglgo -f https://data.dgl.ai/wheels/repo.html
+
 import dgl
 import numpy as np
 import torch
@@ -104,7 +109,7 @@ params = {
   "loss": "binary_cross_entropy",
   "num_node_features": 15,
   "num_hidden_graph_layers": 20,
-  "num_negative_samples": 3,
+  "num_negative_samples": 10,
   "num_classes": 2,
   "batch_size": 12, # Mini batch size for the graph
   "num_epochs": 200,

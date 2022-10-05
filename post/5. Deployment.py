@@ -50,6 +50,7 @@ silver_relation_table = spark.read.format('delta').table('silver_relation_data')
 # Create our gold table based on the GNN predictions
 gold_table_with_pred = silver_relation_table.withColumn("gnn_prediction", 
                                               get_gnn_prediction(struct(*silver_relation_table.columns)))
+
 gold_table_with_pred.write.format("delta").mode("overwrite").saveAsTable('gold_relations_table_with_predictions')
 
 # COMMAND ----------
