@@ -23,12 +23,14 @@
 
 # COMMAND ----------
 
-# DBTITLE 1,Transition our registered model into production
 client = mlflow.tracking.MlflowClient()
 model_name = 'supply_gnn_model_ajmal_aziz'
 model_version = 1
 registered_model = mlflow.pyfunc.load_model(model_uri=f"models:/{model_name}/{model_version}")
 
+# COMMAND ----------
+
+# DBTITLE 1,Transition our registered model into production
 #                                                                               New stage
 #                                                    Previous version           |
 #                                                         |                     |
@@ -37,19 +39,18 @@ client.transition_model_version_stage(model_name, model_version, stage="Producti
 # COMMAND ----------
 
 # DBTITLE 1,Create a UDF from the production version of our GNN model
-get_gnn_prediction = mlflow.pyfunc.spark_udf(spark, f"models:/{model_name}/production")
+get_gnn_prediction = mlflow.pyfunc.spark_udf(spark, f"models:/{model_name}/production", env_manager="local")
 
 # COMMAND ----------
 
 # DBTITLE 1,Generate our gold table with inference included
-from pyspark.sql.functions import col
+from pyspark.sql.functions import col, struct
 
 # Read in our silver table
 silver_relation_table = spark.read.format('delta').table('silver_relation_data')
 
 # Create our gold table based on the GNN predictions
-gold_table_with_pred = silver_relation_table.withColumn("gnn_prediction", 
-                                              get_gnn_prediction(struct(*silver_relation_table.columns)))
+gold_table_with_pred = silver_relation_table.withColumn("gnn_prediction", get_gnn_prediction(struct(*silver_relation_table.columns)))
 
 gold_table_with_pred.write.format("delta").mode("overwrite").saveAsTable('gold_relations_table_with_predictions')
 
@@ -75,7 +76,7 @@ gold_relations = gold_with_predictions\
                   .withColumn("probability",
                               when(col("gnn_prediction") >= col("probability"),
                                    col("gnn_prediction"))\
-                              .otherwise(col("probability")))
+                              .otherwise(col("probability")))\
                   .drop(col("gnn_prediction"))
 
 # Register as the final table for BI

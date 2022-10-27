@@ -32,8 +32,12 @@ database_name = dbutils.widgets.get("database_name")
 get_datasets_from_git(data_path=dbutils.widgets.get("data_path"))
 
 # Create a database and use that for our downstream analysis
-spark.sql(f"create database if not exists {database_name};")
-spark.sql(f"use {database_name};")
+_ = spark.sql(f"create database if not exists {database_name};")
+_ = spark.sql(f"use {database_name};")
+
+# COMMAND ----------
+
+full_data_path = f"dbfs:/FileStore/{data_path}/"
 
 # COMMAND ----------
 
