@@ -23,9 +23,24 @@
 
 # COMMAND ----------
 
-client = mlflow.tracking.MlflowClient()
-model_name = 'supply_gnn_model_ajmal_aziz'
-model_version = 1
+dbutils.widgets.text(name="catalog_name", defaultValue="gnn_blog", label="Catalog Name")
+dbutils.widgets.text(name="database_name", defaultValue="gnn_blog_db", label="Database Name")
+
+catalog_name = dbutils.widgets.get("catalog_name")
+database_name = dbutils.widgets.get("database_name")
+
+_ = spark.sql(f"use {catalog_name}.{database_name};")
+
+# COMMAND ----------
+
+# DBTITLE 1,For the sake of simplicity, we promote latest version to production
+from mlflow import MlflowClient
+
+client = MlflowClient()
+model_name = "supply_gnn_model_ajmal_aziz"
+model_version = int(client.get_latest_versions(model_name)[0].version)
+
+# Latest registered model
 registered_model = mlflow.pyfunc.load_model(model_uri=f"models:/{model_name}/{model_version}")
 
 # COMMAND ----------
@@ -58,11 +73,11 @@ gold_table_with_pred.write.format("delta").mode("overwrite").saveAsTable('gold_r
 
 # DBTITLE 1,Now we can see that there are indeed links that the GNN has not seen which had low confidence but the GNN scores highly!
 # MAGIC %sql
-# MAGIC select Purchaser, Seller, probability, gnn_prediction from gold_relations_table
+# MAGIC select Purchaser, Seller, probability, gnn_prediction from gold_relations_table_with_predictions
 # MAGIC where 1=1
 # MAGIC   and gnn_prediction > probability
 # MAGIC   and gnn_prediction > 0.8
-# MAGIC   and probability < 0.7
+# MAGIC   and probability < 0.6
 
 # COMMAND ----------
 
@@ -80,7 +95,7 @@ gold_relations = gold_with_predictions\
                   .drop(col("gnn_prediction"))
 
 # Register as the final table for BI
-gold_relations.write.format("delta").mode("overwrite").saveAsTable("gold_relations_table")
+gold_relations.write.format("delta").mode("overwrite").saveAsTable("gold_relations_table_refined")
 
 # COMMAND ----------
 

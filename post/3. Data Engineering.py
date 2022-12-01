@@ -20,6 +20,7 @@
 # DBTITLE 1,Create notebook widgets for database name and dataset paths
 dbutils.widgets.text(name="database_name", defaultValue="gnn_blog_db", label="Database Name")
 dbutils.widgets.text(name="data_path", defaultValue="gnn_blog_data", label="FileStore Path")
+dbutils.widgets.text(name="catalog_name", defaultValue="gnn_blog", label="Catalog Name")
 
 # COMMAND ----------
 
@@ -27,13 +28,15 @@ dbutils.widgets.text(name="data_path", defaultValue="gnn_blog_data", label="File
 # Get widget values
 data_path = dbutils.widgets.get("data_path")
 database_name = dbutils.widgets.get("database_name")
+catalog_name = dbutils.widgets.get("catalog_name")
 
 # Extract the zip files in the data directory into dbfs
 get_datasets_from_git(data_path=dbutils.widgets.get("data_path"))
 
 # Create a database and use that for our downstream analysis
-_ = spark.sql(f"create database if not exists {database_name};")
-_ = spark.sql(f"use {database_name};")
+_ = spark.sql(f"create catalog if not exists {catalog_name};")
+_ = spark.sql(f"create database if not exists {catalog_name}.{database_name};")
+_ = spark.sql(f"use {catalog_name}.{database_name};")
 
 # COMMAND ----------
 
@@ -54,7 +57,8 @@ bronze_relation_data.writeStream\
                     .option("mergeSchema", "true")\
                     .option("checkpointLocation", full_data_path + "_checkpoint_bronze_stream")\
                     .trigger(once=True)\
-                    .table("bronze_relation_data")
+                    .table("bronze_relation_data")\
+                    .awaitTermination()
 
 # COMMAND ----------
 
@@ -139,7 +143,8 @@ silver_relation_data = spark.readStream\
  .option("checkpointLocation", full_data_path+"_checkpoint_silver_relations")\
  .option('mergeSchema', 'true')\
  .trigger(once=True)\
- .table('silver_relation_data'))
+ .table('silver_relation_data'))\
+ .awaitTermination()
 
 # COMMAND ----------
 

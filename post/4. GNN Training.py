@@ -16,13 +16,15 @@
 # COMMAND ----------
 
 # DBTITLE 1,Create notebook widgets for database name and dataset paths
+dbutils.widgets.text(name="catalog_name", defaultValue="gnn_blog", label="Catalog Name")
 dbutils.widgets.text(name="database_name", defaultValue="gnn_blog_db", label="Database Name")
 
 # COMMAND ----------
 
 # DBTITLE 1,Unzip data and choose a database for analysis
+catalog_name = dbutils.widgets.get("catalog_name")
 database_name = dbutils.widgets.get("database_name")
-spark.sql(f"use {database_name};")
+spark.sql(f"use {catalog_name}.{database_name};")
 
 # COMMAND ----------
 
